@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Edit, Trash2, Loader2 } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Loader2, Calendar } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,7 +14,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { professorService } from '../services/api';
-import type { Professor, ProfessorDTO } from '../types';
+import { subjectAssignmentService } from '../services/academicService';
+import type { Professor, ProfessorDTO, SubjectAssignmentResponse } from '../types';
 
 const professorFormSchema = z.object({
   firstName: z.string().min(1, 'El nombre es requerido'),
@@ -35,6 +36,10 @@ export default function Teachers() {
   const [professors, setProfessors] = useState<Professor[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
+  const [selectedProfessorSchedule, setSelectedProfessorSchedule] = useState<SubjectAssignmentResponse[]>([]);
+  const [selectedProfessorName, setSelectedProfessorName] = useState('');
+  const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
   const [editingProfessor, setEditingProfessor] = useState<Professor | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -139,6 +144,22 @@ export default function Teachers() {
     }
   };
 
+  const handleViewSchedule = async (professor: Professor) => {
+    try {
+      setIsLoadingSchedule(true);
+      setSelectedProfessorName(`${professor.firstName} ${professor.lastName}`);
+      setIsScheduleDialogOpen(true);
+      
+      const assignments = await subjectAssignmentService.getByProfessor(professor.id);
+      setSelectedProfessorSchedule(assignments);
+    } catch (error) {
+      console.error('Error loading professor schedule:', error);
+      toast.error('Error al cargar el horario del profesor');
+    } finally {
+      setIsLoadingSchedule(false);
+    }
+  };
+
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
     setEditingProfessor(null);
@@ -167,7 +188,7 @@ export default function Teachers() {
               Nuevo Profesor
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {editingProfessor ? 'Editar Profesor' : 'Nuevo Profesor'}
@@ -178,94 +199,102 @@ export default function Teachers() {
                   : 'Ingresa los datos del nuevo profesor'}
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="firstName">Nombre *</Label>
-                  <Input id="firstName" {...register('firstName')} />
-                  {errors.firstName && (
-                    <p className="text-sm text-red-600 mt-1">{errors.firstName.message}</p>
-                  )}
+            <form onSubmit={handleSubmit(onSubmit)} className="px-5 pb-1">
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <Label htmlFor="firstName" className="text-xs font-medium">Nombre *</Label>
+                    <Input id="firstName" {...register('firstName')} className="h-9 text-sm" />
+                    {errors.firstName && (
+                      <p className="text-xs text-red-600 mt-0.5">{errors.firstName.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="lastName" className="text-xs font-medium">Apellido *</Label>
+                    <Input id="lastName" {...register('lastName')} className="h-9 text-sm" />
+                    {errors.lastName && (
+                      <p className="text-xs text-red-600 mt-0.5">{errors.lastName.message}</p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="lastName">Apellido *</Label>
-                  <Input id="lastName" {...register('lastName')} />
-                  {errors.lastName && (
-                    <p className="text-sm text-red-600 mt-1">{errors.lastName.message}</p>
-                  )}
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <Label htmlFor="documentType" className="text-xs font-medium mb-0.5 block">Tipo de Documento *</Label>
+                    <Select 
+                      onValueChange={(value) => setValue('documentType', value, { shouldValidate: true })}
+                      defaultValue={editingProfessor?.identificationType}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue placeholder="Seleccionar..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CC">Cédula de Ciudadanía</SelectItem>
+                        <SelectItem value="CE">Cédula de Extranjería</SelectItem>
+                        <SelectItem value="PA">Pasaporte</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {errors.documentType && (
+                      <p className="text-xs text-red-600 mt-0.5">{errors.documentType.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="documentNumber" className="text-xs font-medium mb-0.5 block">Número de Documento *</Label>
+                    <Input id="documentNumber" {...register('documentNumber')} className="h-8 text-sm" />
+                    {errors.documentNumber && (
+                      <p className="text-xs text-red-600 mt-0.5">{errors.documentNumber.message}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <Label htmlFor="email" className="text-xs font-medium mb-0.5 block">Email *</Label>
+                    <Input id="email" type="email" {...register('email')} className="h-8 text-sm" />
+                    {errors.email && (
+                      <p className="text-xs text-red-600 mt-0.5">{errors.email.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="phone" className="text-xs font-medium mb-0.5 block">Teléfono</Label>
+                    <Input id="phone" {...register('phone')} className="h-8 text-sm" />
+                  </div>
+                </div>
+
                 <div>
-                  <Label htmlFor="documentType">Tipo de Documento *</Label>
-                  <Select onValueChange={(value) => setValue('documentType', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar..." />
+                  <Label htmlFor="address" className="text-xs font-medium mb-0.5 block">Dirección</Label>
+                  <Input id="address" {...register('address')} className="h-8 text-sm" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <Label htmlFor="specialization" className="text-xs font-medium mb-0.5 block">Especialización</Label>
+                    <Input id="specialization" {...register('specialization')} className="h-8 text-sm" />
+                  </div>
+                  <div>
+                    <Label htmlFor="hireDate" className="text-xs font-medium mb-0.5 block">Fecha de Contratación *</Label>
+                    <Input id="hireDate" type="date" {...register('hireDate')} className="h-8 text-sm" />
+                    {errors.hireDate && (
+                      <p className="text-xs text-red-600 mt-0.5">{errors.hireDate.message}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="isActive" className="text-xs font-medium mb-0.5 block">Estado</Label>
+                  <Select 
+                    onValueChange={(value) => setValue('isActive', value === 'true')}
+                    defaultValue={editingProfessor ? String(editingProfessor.isActive) : 'true'}
+                  >
+                    <SelectTrigger className="h-8">
+                      <SelectValue placeholder="Activo" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="CC">Cédula de Ciudadanía</SelectItem>
-                      <SelectItem value="CE">Cédula de Extranjería</SelectItem>
-                      <SelectItem value="PA">Pasaporte</SelectItem>
+                      <SelectItem value="true">Activo</SelectItem>
+                      <SelectItem value="false">Inactivo</SelectItem>
                     </SelectContent>
                   </Select>
-                  {errors.documentType && (
-                    <p className="text-sm text-red-600 mt-1">{errors.documentType.message}</p>
-                  )}
                 </div>
-                <div>
-                  <Label htmlFor="documentNumber">Número de Documento *</Label>
-                  <Input id="documentNumber" {...register('documentNumber')} />
-                  {errors.documentNumber && (
-                    <p className="text-sm text-red-600 mt-1">{errors.documentNumber.message}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="email">Email *</Label>
-                  <Input id="email" type="email" {...register('email')} />
-                  {errors.email && (
-                    <p className="text-sm text-red-600 mt-1">{errors.email.message}</p>
-                  )}
-                </div>
-                <div>
-                  <Label htmlFor="phone">Teléfono</Label>
-                  <Input id="phone" {...register('phone')} />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="address">Dirección</Label>
-                <Input id="address" {...register('address')} />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="specialization">Especialización</Label>
-                  <Input id="specialization" {...register('specialization')} />
-                </div>
-                <div>
-                  <Label htmlFor="hireDate">Fecha de Contratación *</Label>
-                  <Input id="hireDate" type="date" {...register('hireDate')} />
-                  {errors.hireDate && (
-                    <p className="text-sm text-red-600 mt-1">{errors.hireDate.message}</p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="isActive">Estado</Label>
-                <Select onValueChange={(value) => setValue('isActive', value === 'true')}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Activo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="true">Activo</SelectItem>
-                    <SelectItem value="false">Inactivo</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
 
               <DialogFooter>
@@ -336,6 +365,14 @@ export default function Teachers() {
                     <TableCell>{getStatusBadge(professor.isActive)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleViewSchedule(professor)}
+                          title="Ver horario"
+                        >
+                          <Calendar className="h-4 w-4 text-blue-600" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -424,6 +461,71 @@ export default function Teachers() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Schedule Dialog */}
+      <Dialog open={isScheduleDialogOpen} onOpenChange={setIsScheduleDialogOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>
+              <Calendar className="inline h-5 w-5 mr-2" />
+              Horario de {selectedProfessorName}
+            </DialogTitle>
+            <DialogDescription>
+              Materias asignadas y horarios del profesor
+            </DialogDescription>
+          </DialogHeader>
+          
+          {isLoadingSchedule ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : selectedProfessorSchedule.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              Este profesor no tiene materias asignadas
+            </div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Materia</TableHead>
+                    <TableHead>Código</TableHead>
+                    <TableHead>Período</TableHead>
+                    <TableHead>Horario</TableHead>
+                    <TableHead>Aula</TableHead>
+                    <TableHead>Máx. Est.</TableHead>
+                    <TableHead>Estado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedProfessorSchedule.map((assignment) => (
+                    <TableRow key={assignment.id}>
+                      <TableCell className="font-medium">{assignment.subjectName}</TableCell>
+                      <TableCell>{assignment.subjectCode}</TableCell>
+                      <TableCell>{assignment.academicPeriodName}</TableCell>
+                      <TableCell className="max-w-xs truncate">{assignment.schedule || '-'}</TableCell>
+                      <TableCell>{assignment.classroom || '-'}</TableCell>
+                      <TableCell>{assignment.maxStudents || '-'}</TableCell>
+                      <TableCell>
+                        <Badge variant={assignment.isActive ? 'success' : 'default'}>
+                          {assignment.isActive ? 'Activo' : 'Inactivo'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsScheduleDialogOpen(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

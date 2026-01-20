@@ -174,12 +174,13 @@ export default function Levels() {
                   : 'Ingresa los datos del nuevo nivel'}
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div>
-                <Label htmlFor="courseId">Curso *</Label>
-                <Select onValueChange={(value) => setValue('courseId', parseInt(value))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar curso..." />
+            <form onSubmit={handleSubmit(onSubmit)} className="px-5 pb-1">
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="courseId">Curso *</Label>
+                  <Select onValueChange={(value) => setValue('courseId', parseInt(value))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar curso..." />
                   </SelectTrigger>
                   <SelectContent>
                     {courses.length === 0 ? (
@@ -224,8 +225,9 @@ export default function Levels() {
                 <Label htmlFor="description">Descripción</Label>
                 <Input id="description" {...register('description')} />
               </div>
+              </div>
 
-              <DialogFooter>
+              <DialogFooter className="mt-4">
                 <Button type="button" variant="outline" onClick={handleCloseDialog} disabled={isSaving}>
                   Cancelar
                 </Button>

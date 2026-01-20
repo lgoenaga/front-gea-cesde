@@ -247,19 +247,20 @@ const Users = () => {
                     {editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}
                   </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                  <div>
-                    <Label htmlFor="username">Usuario</Label>
-                    <Input
-                      id="username"
-                      {...register('username')}
-                      placeholder="usuario123"
-                      disabled={!!editingUser}
-                    />
-                    {errors.username && (
-                      <p className="text-sm text-red-500 mt-1">{errors.username.message}</p>
-                    )}
-                  </div>
+                <form onSubmit={handleSubmit(onSubmit)} className="px-5 pb-1">
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="username">Usuario</Label>
+                      <Input
+                        id="username"
+                        {...register('username')}
+                        placeholder="usuario123"
+                        disabled={!!editingUser}
+                      />
+                      {errors.username && (
+                        <p className="text-sm text-red-500 mt-1">{errors.username.message}</p>
+                      )}
+                    </div>
 
                   <div>
                     <Label htmlFor="email">Email</Label>
@@ -336,8 +337,9 @@ const Users = () => {
                       Usuario Activo
                     </Label>
                   </div>
+                  </div>
 
-                  <div className="flex justify-end space-x-2 pt-4">
+                  <div className="flex justify-end space-x-2 pt-4 mt-4">
                     <Button type="button" variant="outline" onClick={handleDialogClose} disabled={isSaving}>
                       Cancelar
                     </Button>
@@ -502,19 +504,20 @@ const Users = () => {
               Cambiar Contraseña - {changingPasswordUser?.username}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmitPassword(onPasswordChange)} className="space-y-4">
-            <div>
-              <Label htmlFor="newPassword">Nueva Contraseña</Label>
-              <Input
-                id="newPassword"
-                type="password"
-                {...registerPassword('newPassword')}
-                placeholder="Mínimo 6 caracteres"
-              />
-              {passwordErrors.newPassword && (
-                <p className="text-sm text-red-500 mt-1">{passwordErrors.newPassword.message}</p>
-              )}
-            </div>
+          <form onSubmit={handleSubmitPassword(onPasswordChange)} className="px-5 pb-1">
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="newPassword">Nueva Contraseña</Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  {...registerPassword('newPassword')}
+                  placeholder="Mínimo 6 caracteres"
+                />
+                {passwordErrors.newPassword && (
+                  <p className="text-sm text-red-500 mt-1">{passwordErrors.newPassword.message}</p>
+                )}
+              </div>
 
             <div>
               <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
@@ -528,8 +531,9 @@ const Users = () => {
                 <p className="text-sm text-red-500 mt-1">{passwordErrors.confirmPassword.message}</p>
               )}
             </div>
+            </div>
 
-            <div className="flex justify-end space-x-2 pt-4">
+            <div className="flex justify-end space-x-2 pt-4 mt-4">
               <Button type="button" variant="outline" onClick={handlePasswordDialogClose}>
                 Cancelar
               </Button>

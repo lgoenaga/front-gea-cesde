@@ -192,18 +192,19 @@ const AcademicPeriods = () => {
                     {editingPeriod ? 'Editar Período Académico' : 'Nuevo Período Académico'}
                   </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                  <div>
-                    <Label htmlFor="name">Nombre del Período</Label>
-                    <Input
-                      id="name"
-                      {...register('name')}
-                      placeholder="Ej: Primer Semestre 2026"
-                    />
-                    {errors.name && (
-                      <p className="text-sm text-red-500 mt-1">{errors.name.message}</p>
-                    )}
-                  </div>
+                <form onSubmit={handleSubmit(onSubmit)} className="px-5 pb-1">
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="name">Nombre del Período</Label>
+                      <Input
+                        id="name"
+                        {...register('name')}
+                        placeholder="Ej: Primer Semestre 2026"
+                      />
+                      {errors.name && (
+                        <p className="text-sm text-red-500 mt-1">{errors.name.message}</p>
+                      )}
+                    </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -245,8 +246,9 @@ const AcademicPeriods = () => {
                   {errors.isActive && (
                     <p className="text-sm text-red-500 mt-1">{errors.isActive.message}</p>
                   )}
+                  </div>
 
-                  <div className="flex justify-end space-x-2 pt-4">
+                  <div className="flex justify-end space-x-2 pt-4 mt-4">
                     <Button type="button" variant="outline" onClick={handleDialogClose} disabled={isSaving}>
                       Cancelar
                     </Button>

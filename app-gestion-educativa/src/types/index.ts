@@ -387,3 +387,51 @@ export interface CourseGroupDTO {
   endDate: string;
   isActive?: boolean;
 }
+
+// Subject Assignment types
+export interface SubjectAssignmentRequest {
+  subjectId: number;
+  professorId: number;
+  academicPeriodId: number;
+  groupId?: number | null;
+  schedule?: string;
+  classroom?: string;
+  maxStudents?: number;
+  isActive?: boolean;
+}
+
+export interface SubjectAssignmentUpdate {
+  schedule?: string;
+  classroom?: string;
+  maxStudents?: number;
+  isActive?: boolean;
+}
+
+export interface SubjectAssignmentResponse {
+  id: number;
+  // Subject details
+  subjectId: number;
+  subjectName: string;
+  subjectCode: string;
+  // Professor details
+  professorId: number;
+  professorFirstName: string;
+  professorLastName: string;
+  professorFullName: string;
+  professorEmail: string;
+  // Academic Period details
+  academicPeriodId: number;
+  academicPeriodName: string;
+  academicPeriodStartDate: string;
+  academicPeriodEndDate: string;
+  // Group details (optional)
+  groupId: number | null;
+  groupName: string | null;
+  // Assignment details
+  schedule: string | null;
+  classroom: string | null;
+  maxStudents: number | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

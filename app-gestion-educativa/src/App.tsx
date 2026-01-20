@@ -10,6 +10,7 @@ import Teachers from './pages/Teachers';
 import Courses from './pages/Courses';
 import Levels from './pages/Levels';
 import Subjects from './pages/Subjects';
+import SubjectAssignments from './pages/SubjectAssignments';
 import AcademicPeriods from './pages/AcademicPeriods';
 import Enrollments from './pages/Enrollments';
 import Grades from './pages/Grades';
@@ -79,6 +80,14 @@ function App() {
               element={
                 <ProtectedRoute roles={[ROLES.ADMIN]}>
                   <Subjects />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="subject-assignments"
+              element={
+                <ProtectedRoute roles={[ROLES.ADMIN]}>
+                  <SubjectAssignments />
                 </ProtectedRoute>
               }
             />

@@ -318,17 +318,18 @@ const Enrollments = () => {
                   ))}
                 </div>
 
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                  {/* Step 1: Select Student */}
-                  {currentStep === 1 && (
-                    <div>
-                      <Label>Seleccionar Estudiante</Label>
-                      <Select
-                        value={selectedStudent.toString()}
-                        onValueChange={(value: string) => setSelectedStudent(parseInt(value))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccione un estudiante" />
+                <form onSubmit={handleSubmit(onSubmit)} className="px-5 pb-1">
+                  <div className="space-y-3">
+                    {/* Step 1: Select Student */}
+                    {currentStep === 1 && (
+                      <div>
+                        <Label>Seleccionar Estudiante</Label>
+                        <Select
+                          value={selectedStudent.toString()}
+                          onValueChange={(value: string) => setSelectedStudent(parseInt(value))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccione un estudiante" />
                         </SelectTrigger>
                         <SelectContent>
                           {students.map((student) => (
@@ -483,6 +484,7 @@ const Enrollments = () => {
                         {isSaving ? 'Creando...' : 'Crear Matrícula'}
                       </Button>
                     )}
+                  </div>
                   </div>
                 </form>
               </DialogContent>

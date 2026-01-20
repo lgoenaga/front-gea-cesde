@@ -292,7 +292,8 @@ export default function Courses() {
                     : 'Ingresa los datos del nuevo curso'}
                 </DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleSubmitCourse(onSubmitCourse)} className="space-y-4">
+              <form onSubmit={handleSubmitCourse(onSubmitCourse)} className="px-5 pb-1">
+                <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="code">Código *</Label>
@@ -339,8 +340,9 @@ export default function Courses() {
                     </SelectContent>
                   </Select>
                 </div>
+                </div>
 
-                <DialogFooter>
+                <DialogFooter className="mt-4">
                   <Button type="button" variant="outline" onClick={handleCloseCourseDialog} disabled={isSaving}>
                     Cancelar
                   </Button>
@@ -517,7 +519,8 @@ export default function Courses() {
                     : 'Ingresa los datos del nuevo grupo'}
                 </DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleSubmitGroup(onSubmitGroup)} className="space-y-4">
+              <form onSubmit={handleSubmitGroup(onSubmitGroup)} className="px-5 pb-1">
+                <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="courseId">Curso *</Label>
@@ -605,8 +608,9 @@ export default function Courses() {
                     </SelectContent>
                   </Select>
                 </div>
+                </div>
 
-                <DialogFooter>
+                <DialogFooter className="mt-4">
                   <Button type="button" variant="outline" onClick={handleCloseGroupDialog} disabled={isSaving}>
                     Cancelar
                   </Button>
@@ -640,6 +644,7 @@ export default function Courses() {
                 <TableRow>
                   <TableHead>Código</TableHead>
                   <TableHead>Curso</TableHead>
+                  <TableHead>Nivel</TableHead>
                   <TableHead>Turno</TableHead>
                   <TableHead>Cupo Máx</TableHead>
                   <TableHead>Estado</TableHead>
@@ -649,14 +654,14 @@ export default function Courses() {
               <TableBody>
                 {isGroupsLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={7} className="text-center py-8">
                       <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                       <p className="text-gray-500 mt-2">Cargando grupos...</p>
                     </TableCell>
                   </TableRow>
                 ) : filteredGroups.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                    <TableCell colSpan={7} className="text-center text-gray-500 py-8">
                       No hay grupos registrados
                     </TableCell>
                   </TableRow>
@@ -665,6 +670,13 @@ export default function Courses() {
                     <TableRow key={group.id}>
                       <TableCell className="font-medium">{group.groupCode}</TableCell>
                       <TableCell>{group.courseName || getCourseName(group.courseId)}</TableCell>
+                      <TableCell>
+                        {group.levelName ? (
+                          <span className="text-sm">{group.levelName}</span>
+                        ) : (
+                          <span className="text-xs text-gray-400">Nivel {group.levelId}</span>
+                        )}
+                      </TableCell>
                       <TableCell>{group.scheduleShift || 'N/A'}</TableCell>
                       <TableCell>{group.maxStudents}</TableCell>
                       <TableCell>{getStatusBadge(group.isActive)}</TableCell>

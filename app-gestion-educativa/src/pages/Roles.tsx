@@ -189,23 +189,24 @@ const Roles = () => {
                     {editingRole ? 'Editar Rol' : 'Nuevo Rol'}
                   </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                  <div>
-                    <Label htmlFor="name">Nombre del Rol</Label>
-                    <Input
-                      id="name"
-                      {...register('name')}
-                      placeholder="NOMBRE_ROL"
-                      disabled={!!editingRole}
-                      className="uppercase"
-                    />
-                    {errors.name && (
-                      <p className="text-sm text-red-500 mt-1">{errors.name.message}</p>
-                    )}
-                    <p className="text-xs text-gray-500 mt-1">
-                      Debe estar en MAYÚSCULAS y puede contener letras y guiones bajos
-                    </p>
-                  </div>
+                <form onSubmit={handleSubmit(onSubmit)} className="px-5 pb-1">
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="name">Nombre del Rol</Label>
+                      <Input
+                        id="name"
+                        {...register('name')}
+                        placeholder="NOMBRE_ROL"
+                        disabled={!!editingRole}
+                        className="uppercase"
+                      />
+                      {errors.name && (
+                        <p className="text-sm text-red-500 mt-1">{errors.name.message}</p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        Debe estar en MAYÚSCULAS y puede contener letras y guiones bajos
+                      </p>
+                    </div>
 
                   <div>
                     <Label htmlFor="description">Descripción</Label>
@@ -218,8 +219,9 @@ const Roles = () => {
                       <p className="text-sm text-red-500 mt-1">{errors.description.message}</p>
                     )}
                   </div>
+                  </div>
 
-                  <div className="flex justify-end space-x-2 pt-4">
+                  <div className="flex justify-end space-x-2 pt-4 mt-4">
                     <Button type="button" variant="outline" onClick={handleDialogClose} disabled={isSaving}>
                       Cancelar
                     </Button>

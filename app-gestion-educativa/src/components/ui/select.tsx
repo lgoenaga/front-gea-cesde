@@ -21,16 +21,27 @@ const useSelect = () => {
 
 interface SelectProps {
   value?: string;
+  defaultValue?: string;
   onValueChange?: (value: string) => void;
   children: React.ReactNode;
 }
 
-export const Select: React.FC<SelectProps> = ({ value = '', onValueChange, children }) => {
+export const Select: React.FC<SelectProps> = ({ value: controlledValue, defaultValue, onValueChange, children }) => {
   const [open, setOpen] = React.useState(false);
+  const [internalValue, setInternalValue] = React.useState(defaultValue || '');
+  
+  const value = controlledValue !== undefined ? controlledValue : internalValue;
+  
+  const handleValueChange = (newValue: string) => {
+    if (controlledValue === undefined) {
+      setInternalValue(newValue);
+    }
+    onValueChange?.(newValue);
+  };
 
   return (
     <SelectContext.Provider
-      value={{ value, onValueChange: onValueChange || (() => {}), open, setOpen }}
+      value={{ value, onValueChange: handleValueChange, open, setOpen }}
     >
       <div className="relative">{children}</div>
     </SelectContext.Provider>

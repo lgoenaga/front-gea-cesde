@@ -14,6 +14,7 @@ import {
   CalendarDays,
   UserPlus,
   Shield,
+  UserCheck,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
@@ -70,6 +71,12 @@ export default function MainLayout() {
       name: 'Materias',
       path: '/subjects',
       icon: <BookMarked className="w-5 h-5" />,
+      roles: [ROLES.ADMIN],
+    },
+    {
+      name: 'Asignaciones',
+      path: '/subject-assignments',
+      icon: <UserCheck className="w-5 h-5" />,
       roles: [ROLES.ADMIN],
     },
     {

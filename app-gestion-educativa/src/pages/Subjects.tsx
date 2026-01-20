@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Edit, Trash2, Loader2 } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Loader2, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -13,8 +13,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import type { Subject, Level, SubjectDTO } from '../types';
+import type { Subject, Level, SubjectDTO, SubjectAssignmentResponse } from '../types';
 import { subjectService, levelService } from '../services/api';
+import { subjectAssignmentService } from '../services/academicService';
 
 const subjectFormSchema = z.object({
   levelId: z.number().min(1, 'Debe seleccionar un nivel'),
@@ -32,6 +33,10 @@ export default function Subjects() {
   const [levels, setLevels] = useState<Level[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isProfessorsDialogOpen, setIsProfessorsDialogOpen] = useState(false);
+  const [selectedSubjectProfessors, setSelectedSubjectProfessors] = useState<SubjectAssignmentResponse[]>([]);
+  const [selectedSubjectName, setSelectedSubjectName] = useState('');
+  const [isLoadingProfessors, setIsLoadingProfessors] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -135,6 +140,22 @@ export default function Subjects() {
     }
   };
 
+  const handleViewProfessors = async (subject: Subject) => {
+    try {
+      setIsLoadingProfessors(true);
+      setSelectedSubjectName(`${subject.code} - ${subject.name}`);
+      setIsProfessorsDialogOpen(true);
+      
+      const assignments = await subjectAssignmentService.getBySubject(subject.id);
+      setSelectedSubjectProfessors(assignments);
+    } catch (error) {
+      console.error('Error loading subject professors:', error);
+      toast.error('Error al cargar los profesores de la materia');
+    } finally {
+      setIsLoadingProfessors(false);
+    }
+  };
+
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
     setEditingSubject(null);
@@ -179,12 +200,13 @@ export default function Subjects() {
                   : 'Ingresa los datos de la nueva materia'}
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div>
-                <Label htmlFor="levelId">Nivel *</Label>
-                <Select onValueChange={(value) => setValue('levelId', parseInt(value))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar nivel..." />
+            <form onSubmit={handleSubmit(onSubmit)} className="px-5 pb-1">
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="levelId">Nivel *</Label>
+                  <Select onValueChange={(value) => setValue('levelId', parseInt(value))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar nivel..." />
                   </SelectTrigger>
                   <SelectContent>
                     {levels.length === 0 ? (
@@ -249,8 +271,9 @@ export default function Subjects() {
                   </SelectContent>
                 </Select>
               </div>
+              </div>
 
-              <DialogFooter>
+              <DialogFooter className="mt-4">
                 <Button type="button" variant="outline" onClick={handleCloseDialog} disabled={isSaving}>
                   Cancelar
                 </Button>
@@ -318,6 +341,14 @@ export default function Subjects() {
                     <TableCell>{getStatusBadge(subject.isActive)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleViewProfessors(subject)}
+                          title="Ver profesores asignados"
+                        >
+                          <UserCheck className="h-4 w-4 text-blue-600" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -405,6 +436,71 @@ export default function Subjects() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Professors Dialog */}
+      <Dialog open={isProfessorsDialogOpen} onOpenChange={setIsProfessorsDialogOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>
+              <UserCheck className="inline h-5 w-5 mr-2" />
+              Profesores - {selectedSubjectName}
+            </DialogTitle>
+            <DialogDescription>
+              Profesores asignados a esta materia
+            </DialogDescription>
+          </DialogHeader>
+          
+          {isLoadingProfessors ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : selectedSubjectProfessors.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              Esta materia no tiene profesores asignados
+            </div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Profesor</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Período</TableHead>
+                    <TableHead>Horario</TableHead>
+                    <TableHead>Aula</TableHead>
+                    <TableHead>Máx. Est.</TableHead>
+                    <TableHead>Estado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedSubjectProfessors.map((assignment) => (
+                    <TableRow key={assignment.id}>
+                      <TableCell className="font-medium">{assignment.professorFullName}</TableCell>
+                      <TableCell>{assignment.professorEmail}</TableCell>
+                      <TableCell>{assignment.academicPeriodName}</TableCell>
+                      <TableCell className="max-w-xs truncate">{assignment.schedule || '-'}</TableCell>
+                      <TableCell>{assignment.classroom || '-'}</TableCell>
+                      <TableCell>{assignment.maxStudents || '-'}</TableCell>
+                      <TableCell>
+                        <Badge variant={assignment.isActive ? 'success' : 'default'}>
+                          {assignment.isActive ? 'Activo' : 'Inactivo'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsProfessorsDialogOpen(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

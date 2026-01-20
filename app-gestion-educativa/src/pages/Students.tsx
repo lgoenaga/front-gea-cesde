@@ -176,13 +176,14 @@ export default function Students() {
                   : 'Ingresa los datos del nuevo estudiante'}
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="firstName">Nombre *</Label>
-                  <Input id="firstName" {...register('firstName')} />
-                  {errors.firstName && (
-                    <p className="text-sm text-red-600 mt-1">{errors.firstName.message}</p>
+            <form onSubmit={handleSubmit(onSubmit)} className="px-5 pb-1">
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="firstName">Nombre *</Label>
+                    <Input id="firstName" {...register('firstName')} />
+                    {errors.firstName && (
+                      <p className="text-sm text-red-600 mt-1">{errors.firstName.message}</p>
                   )}
                 </div>
                 <div>
@@ -261,8 +262,9 @@ export default function Students() {
                   </Select>
                 </div>
               </div>
+              </div>
 
-              <DialogFooter>
+              <DialogFooter className="mt-4">
                 <Button type="button" variant="outline" onClick={handleCloseDialog} disabled={isSaving}>
                   Cancelar
                 </Button>
