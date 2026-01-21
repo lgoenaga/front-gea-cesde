@@ -84,9 +84,12 @@ export const SelectValue: React.FC<{ placeholder?: string }> = ({ placeholder })
 type SelectContentProps = React.HTMLAttributes<HTMLDivElement>;
 
 export const SelectContent = React.forwardRef<HTMLDivElement, SelectContentProps>(
-  ({ className, children, ...props }) => {
+  ({ className, children, ...props }, ref) => {
     const { open, setOpen } = useSelect();
     const contentRef = React.useRef<HTMLDivElement>(null);
+
+    // Combine external ref with internal ref
+    React.useImperativeHandle(ref, () => contentRef.current!);
 
     React.useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {

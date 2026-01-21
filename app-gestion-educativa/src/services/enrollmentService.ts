@@ -145,6 +145,17 @@ export const levelEnrollmentService = {
     return response.data.data || [];
   },
   
+  getPaged: async (params?: PaginationParams) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+    if (params?.sort) queryParams.append('sort', params.sort);
+    
+    const url = `/level-enrollments/paged${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+    const response = await api.get<ApiResponse<PagedResponse<LevelEnrollment>>>(url);
+    return response.data.data!;
+  },
+  
   getById: async (id: number) => {
     const response = await api.get<ApiResponse<LevelEnrollment>>(`/level-enrollments/${id}`);
     return response.data.data;
@@ -156,12 +167,64 @@ export const levelEnrollmentService = {
     );
     return response.data.data || [];
   },
+  
+  getByLevel: async (levelId: number) => {
+    const response = await api.get<ApiResponse<LevelEnrollment[]>>(`/level-enrollments/level/${levelId}`);
+    return response.data.data || [];
+  },
+  
+  getByPeriod: async (periodId: number) => {
+    const response = await api.get<ApiResponse<LevelEnrollment[]>>(`/level-enrollments/period/${periodId}`);
+    return response.data.data || [];
+  },
+  
+  getByGroup: async (groupId: number) => {
+    const response = await api.get<ApiResponse<LevelEnrollment[]>>(`/level-enrollments/group/${groupId}`);
+    return response.data.data || [];
+  },
+  
+  getByStatus: async (status: string) => {
+    const response = await api.get<ApiResponse<LevelEnrollment[]>>(`/level-enrollments/status/${status}`);
+    return response.data.data || [];
+  },
+  
+  create: async (data: LevelEnrollmentDTO) => {
+    const response = await api.post<ApiResponse<LevelEnrollment>>('/level-enrollments', data);
+    return response.data.data;
+  },
+  
+  update: async (id: number, data: LevelEnrollmentDTO) => {
+    const response = await api.put<ApiResponse<LevelEnrollment>>(`/level-enrollments/${id}`, data);
+    return response.data.data;
+  },
+  
+  updateStatus: async (id: number, status: string) => {
+    const response = await api.patch<ApiResponse<LevelEnrollment>>(
+      `/level-enrollments/${id}/status?status=${status}`
+    );
+    return response.data.data;
+  },
+  
+  delete: async (id: number) => {
+    await api.delete(`/level-enrollments/${id}`);
+  },
 };
 
 export const subjectEnrollmentService = {
   getAll: async () => {
     const response = await api.get<ApiResponse<SubjectEnrollment[]>>('/subject-enrollments');
     return response.data.data || [];
+  },
+  
+  getPaged: async (params?: PaginationParams) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+    if (params?.sort) queryParams.append('sort', params.sort);
+    
+    const url = `/subject-enrollments/paged${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+    const response = await api.get<ApiResponse<PagedResponse<SubjectEnrollment>>>(url);
+    return response.data.data!;
   },
   
   getById: async (id: number) => {
@@ -174,5 +237,38 @@ export const subjectEnrollmentService = {
       `/subject-enrollments/level-enrollment/${levelEnrollmentId}`
     );
     return response.data.data || [];
+  },
+  
+  getBySubjectAssignment: async (subjectAssignmentId: number) => {
+    const response = await api.get<ApiResponse<SubjectEnrollment[]>>(
+      `/subject-enrollments/subject-assignment/${subjectAssignmentId}`
+    );
+    return response.data.data || [];
+  },
+  
+  getByStatus: async (status: string) => {
+    const response = await api.get<ApiResponse<SubjectEnrollment[]>>(`/subject-enrollments/status/${status}`);
+    return response.data.data || [];
+  },
+  
+  create: async (data: SubjectEnrollmentDTO) => {
+    const response = await api.post<ApiResponse<SubjectEnrollment>>('/subject-enrollments', data);
+    return response.data.data;
+  },
+  
+  update: async (id: number, data: SubjectEnrollmentDTO) => {
+    const response = await api.put<ApiResponse<SubjectEnrollment>>(`/subject-enrollments/${id}`, data);
+    return response.data.data;
+  },
+  
+  updateStatus: async (id: number, status: string) => {
+    const response = await api.patch<ApiResponse<SubjectEnrollment>>(
+      `/subject-enrollments/${id}/status?status=${status}`
+    );
+    return response.data.data;
+  },
+  
+  delete: async (id: number) => {
+    await api.delete(`/subject-enrollments/${id}`);
   },
 };

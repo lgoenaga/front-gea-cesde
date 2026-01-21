@@ -322,10 +322,15 @@ export interface RoleDTO {
 export interface CourseEnrollment {
   id: number;
   studentId: number;
+  studentName?: string;
   courseId: number;
+  courseName?: string;
   academicPeriodId: number;
+  academicPeriodName?: string;
   enrollmentDate: string;
-  status: 'ACTIVO' | 'EGRESADO' | 'RETIRADO' | 'INACTIVO';
+  enrollmentStatus: 'ACTIVO' | 'EGRESADO' | 'RETIRADO' | 'INACTIVO';
+  completionDate?: string;
+  notes?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -335,26 +340,61 @@ export interface CourseEnrollmentDTO {
   courseId: number;
   academicPeriodId: number;
   enrollmentDate: string;
-  status?: string;
+  enrollmentStatus?: string;
+  notes?: string;
 }
 
 export interface LevelEnrollment {
   id: number;
   courseEnrollmentId: number;
   levelId: number;
+  levelName?: string;
+  academicPeriodId: number;
+  groupId?: number;
+  groupCode?: string;
   enrollmentDate: string;
+  status: 'EN_CURSO' | 'APROBADO' | 'REPROBADO' | 'RETIRADO';
+  finalAverage?: number;
   completionDate?: string;
-  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LevelEnrollmentDTO {
+  courseEnrollmentId: number;
+  levelId: number;
+  academicPeriodId: number;
+  groupId?: number;
+  enrollmentDate: string;
+  status?: 'EN_CURSO' | 'APROBADO' | 'REPROBADO' | 'RETIRADO';
 }
 
 export interface SubjectEnrollment {
   id: number;
   levelEnrollmentId: number;
+  studentName: string;
+  // Subject information (SIEMPRE presente v2.5.0)
   subjectId: number;
-  professorId?: number;
+  subjectName: string;
+  subjectCode?: string;
+  // Professor/Assignment information (OPCIONAL v2.5.0 - puede ser null)
+  subjectAssignmentId?: number;
+  professorName?: string;
+  schedule?: string;
+  classroom?: string;
   enrollmentDate: string;
+  status: 'EN_CURSO' | 'APROBADO' | 'REPROBADO' | 'RETIRADO';
   finalGrade?: number;
-  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SubjectEnrollmentDTO {
+  levelEnrollmentId: number;
+  subjectId: number;              // ✅ OBLIGATORIO (v2.5.0)
+  subjectAssignmentId?: number;   // ⚠️ OPCIONAL (v2.5.0 - puede ser null)
+  enrollmentDate: string;
+  status?: 'EN_CURSO' | 'APROBADO' | 'REPROBADO' | 'RETIRADO';
 }
 
 // Course Group types
@@ -413,6 +453,9 @@ export interface SubjectAssignmentResponse {
   subjectId: number;
   subjectName: string;
   subjectCode: string;
+  // Level details (from Subject)
+  levelId?: number;
+  levelName?: string;
   // Professor details
   professorId: number;
   professorFirstName: string;

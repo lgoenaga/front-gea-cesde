@@ -11,10 +11,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../components/ui/alert-dialog';
 import { Badge } from '../components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Combobox } from '../components/ui/combobox';
 import { Plus, Trash2, Search, ChevronRight, ChevronLeft, Check, Loader2 } from 'lucide-react';
-import { studentService, courseService, levelService, subjectService, courseGroupService } from '../services/api';
-import { courseEnrollmentService } from '../services/enrollmentService';
+import { studentService, courseService, levelService, subjectService, courseGroupService, subjectAssignmentService } from '../services/api';
+import { courseEnrollmentService, levelEnrollmentService, subjectEnrollmentService } from '../services/enrollmentService';
 import type { 
   Student, 
   Course, 
@@ -22,7 +24,12 @@ import type {
   Subject, 
   CourseGroup, 
   CourseEnrollment,
-  CourseEnrollmentDTO 
+  CourseEnrollmentDTO,
+  LevelEnrollment,
+  LevelEnrollmentDTO,
+  SubjectEnrollment,
+  SubjectEnrollmentDTO,
+  SubjectAssignment
 } from '../types';
 
 // Form data type (camelCase)
@@ -44,6 +51,12 @@ const enrollmentFormSchema = z.object({
   enrollmentDate: z.string().min(1, 'La fecha de matrícula es requerida')
 });
 
+// Extended enrollment type with related data
+type EnrollmentDisplay = CourseEnrollment & {
+  levelEnrollments?: LevelEnrollment[];
+  subjectEnrollments?: SubjectEnrollment[];
+};
+
 const Enrollments = () => {
   // Data states
   const [students, setStudents] = useState<Student[]>([]);
@@ -51,7 +64,8 @@ const Enrollments = () => {
   const [levels, setLevels] = useState<Level[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [groups, setGroups] = useState<CourseGroup[]>([]);
-  const [enrollments, setEnrollments] = useState<CourseEnrollment[]>([]);
+  const [enrollments, setEnrollments] = useState<EnrollmentDisplay[]>([]);
+  const [subjectAssignments, setSubjectAssignments] = useState<SubjectAssignment[]>([]);
   
   // UI states
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,6 +73,8 @@ const Enrollments = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [studentSearchOpen, setStudentSearchOpen] = useState(false);
+  const [courseSearchOpen, setCourseSearchOpen] = useState(false);
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState(1);
@@ -85,13 +101,13 @@ const Enrollments = () => {
 
   // Load subjects when level changes
   useEffect(() => {
-    if (selectedLevel > 0) {
+    if (selectedLevel > 0 && selectedGroup > 0) {
       loadSubjectsByLevel(selectedLevel);
     } else {
-      setSubjects([]);
+      setSubjectAssignments([]);
       setSelectedSubjects([]);
     }
-  }, [selectedLevel]);
+  }, [selectedLevel, selectedGroup]);
 
   // Load groups when course changes
   useEffect(() => {
@@ -106,14 +122,48 @@ const Enrollments = () => {
   const loadInitialData = async () => {
     try {
       setIsLoading(true);
-      const [studentsData, coursesData, enrollmentsData] = await Promise.all([
+      const [studentsData, coursesData, enrollmentsData, groupsData] = await Promise.all([
         studentService.getAll(),
         courseService.getActive(),
-        courseEnrollmentService.getAll()
+        courseEnrollmentService.getAll(),
+        courseGroupService.getAll()
       ]);
       setStudents(studentsData);
       setCourses(coursesData);
-      setEnrollments(enrollmentsData);
+      setGroups(groupsData);
+      
+      // Load level and subject enrollments for each course enrollment
+      const enrollmentsWithData: EnrollmentDisplay[] = await Promise.all(
+        enrollmentsData.map(async (enrollment) => {
+          try {
+            // Fetch level enrollments for this course enrollment
+            const levelEnrollments = await levelEnrollmentService.getByCourseEnrollment(enrollment.id);
+            
+            // Fetch subject enrollments for each level enrollment
+            const subjectEnrollments: SubjectEnrollment[] = [];
+            for (const levelEnr of levelEnrollments) {
+              const subjects = await subjectEnrollmentService.getByLevelEnrollment(levelEnr.id);
+              subjectEnrollments.push(...subjects);
+            }
+            
+            return {
+              ...enrollment,
+              levelEnrollments,
+              subjectEnrollments
+            };
+          } catch (error) {
+            console.error(`Error loading enrollments for course enrollment ${enrollment.id}:`, error);
+            // Return enrollment with empty arrays if fetching fails
+            return {
+              ...enrollment,
+              levelEnrollments: [],
+              subjectEnrollments: []
+            };
+          }
+        })
+      );
+      
+      setEnrollments(enrollmentsWithData);
     } catch (error) {
       console.error('Error loading data:', error);
       toast.error('Error al cargar los datos');
@@ -134,8 +184,33 @@ const Enrollments = () => {
 
   const loadSubjectsByLevel = async (levelId: number) => {
     try {
-      const data = await subjectService.getByLevel(levelId);
-      setSubjects(data);
+      const selectedGroupData = groups.find(g => g.id === selectedGroup);
+      if (!selectedGroupData) {
+        setSubjects([]);
+        setSubjectAssignments([]);
+        return;
+      }
+      
+      // ✅ Paso 1: Obtener catálogo de materias (SIEMPRE necesario v2.5.0)
+      const subjectsData = await subjectService.getByLevel(levelId);
+      
+      if (!subjectsData || subjectsData.length === 0) {
+        // ERROR REAL: No hay materias configuradas
+        setSubjects([]);
+        setSubjectAssignments([]);
+        return;
+      }
+      
+      // ✅ Paso 2: Obtener asignaciones de profesores (OPCIONAL en v2.5.0)
+      const allAssignments = await subjectAssignmentService.getByPeriod(
+        selectedGroupData.academicPeriodId
+      );
+      const levelAssignments = allAssignments.filter(a => a.levelId === levelId);
+      
+      // Guardar ambas listas
+      setSubjects(subjectsData);
+      setSubjectAssignments(levelAssignments);
+      
     } catch (error) {
       console.error('Error loading subjects:', error);
       toast.error('Error al cargar las materias');
@@ -168,20 +243,92 @@ const Enrollments = () => {
     try {
       setIsSaving(true);
       
+      // Get the selected group to obtain courseId and academicPeriodId
+      const selectedGroupData = groups.find(g => g.id === data.groupId);
+      if (!selectedGroupData) {
+        toast.error('Grupo no encontrado');
+        return;
+      }
+      
+      // Step 1: Create CourseEnrollment
       const enrollmentDTO: CourseEnrollmentDTO = {
         studentId: data.studentId,
-        groupId: data.groupId,
+        courseId: selectedGroupData.courseId,
+        academicPeriodId: selectedGroupData.academicPeriodId,
         enrollmentDate: data.enrollmentDate,
-        status: 'ACTIVE'
+        enrollmentStatus: 'ACTIVO'
       };
 
-      await courseEnrollmentService.create(enrollmentDTO);
-      toast.success('Matrícula creada exitosamente');
+      const courseEnrollment = await courseEnrollmentService.create(enrollmentDTO);
+      
+      // Step 2: Create LevelEnrollment
+      const levelEnrollmentDTO: LevelEnrollmentDTO = {
+        courseEnrollmentId: courseEnrollment.id,
+        levelId: data.levelId,
+        academicPeriodId: selectedGroupData.academicPeriodId,
+        groupId: data.groupId,
+        enrollmentDate: data.enrollmentDate,
+        status: 'EN_CURSO'
+      };
+      
+      const levelEnrollment = await levelEnrollmentService.create(levelEnrollmentDTO);
+      
+      // ✅ Step 3: SubjectEnrollments (MODIFICADO para v2.5.0)
+      if (data.subjectIds && data.subjectIds.length > 0) {
+        const enrollmentResults = await Promise.all(
+          data.subjectIds.map(async (subjectId) => {
+            // Buscar si hay assignment para esta materia
+            const assignment = subjectAssignments.find(a => a.subjectId === subjectId);
+            
+            // ⭐ CAMBIO v2.5.0: subjectId obligatorio, assignment opcional
+            const subjectEnrollmentDTO: SubjectEnrollmentDTO = {
+              levelEnrollmentId: levelEnrollment.id,
+              subjectId: subjectId,                    // ✅ OBLIGATORIO
+              subjectAssignmentId: assignment?.id,     // ⚠️ OPCIONAL (puede ser undefined)
+              enrollmentDate: data.enrollmentDate,
+              status: 'EN_CURSO'
+            };
+            
+            return subjectEnrollmentService.create(subjectEnrollmentDTO);
+          })
+        );
+        
+        // Contar cuántas tienen profesor
+        const withProfessor = enrollmentResults.filter(e => e.professorName).length;
+        const withoutProfessor = enrollmentResults.length - withProfessor;
+        
+        // Mensaje según resultado
+        if (withoutProfessor > 0) {
+          toast.success(
+            `✅ Matrícula creada: ${enrollmentResults.length} materias. ` +
+            `⚠️ ${withoutProfessor} sin profesor asignado aún.`,
+            { duration: 5000 }
+          );
+        } else {
+          toast.success('✅ Matrícula creada exitosamente con todos los detalles');
+        }
+      } else {
+        toast.success('✅ Matrícula creada exitosamente');
+      }
       await loadInitialData();
       handleDialogClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating enrollment:', error);
-      toast.error('Error al crear la matrícula');
+      
+      // Parse backend error messages
+      const errorMessage = error?.response?.data?.message || error?.message || 'Error al crear la matrícula';
+      
+      if (errorMessage.includes('not active')) {
+        toast.error('El período académico o la matrícula del curso no está activa');
+      } else if (errorMessage.includes('does not belong')) {
+        toast.error('Una de las materias seleccionadas no pertenece a este nivel');
+      } else if (errorMessage.includes('already has an active enrollment')) {
+        toast.error('El estudiante ya tiene una matrícula activa en este nivel');
+      } else if (errorMessage.includes('already enrolled')) {
+        toast.error('El estudiante ya está inscrito en una de las materias seleccionadas');
+      } else {
+        toast.error(errorMessage);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -189,7 +336,12 @@ const Enrollments = () => {
 
   const handleDelete = async (enrollmentId: number) => {
     try {
+      setIsSaving(true);
+      
+      // Delete the course enrollment
+      // Note: Backend should handle cascade deletion of related records
       await courseEnrollmentService.delete(enrollmentId);
+      
       toast.success('Matrícula eliminada exitosamente');
       await loadInitialData();
     } catch (error) {
@@ -197,6 +349,7 @@ const Enrollments = () => {
       toast.error('Error al eliminar la matrícula');
     } finally {
       setDeleteId(null);
+      setIsSaving(false);
     }
   };
 
@@ -208,6 +361,8 @@ const Enrollments = () => {
     setSelectedLevel(0);
     setSelectedGroup(0);
     setSelectedSubjects([]);
+    setStudentSearchOpen(false);
+    setCourseSearchOpen(false);
     reset();
   };
 
@@ -253,8 +408,12 @@ const Enrollments = () => {
   });
 
   const availableLevels = levels.filter(level => level.courseId === selectedCourse);
-  const availableGroups = groups.filter(group => group.courseId === selectedCourse);
-  const availableSubjects = subjects.filter(subject => subject.levelId === selectedLevel);
+  const availableGroups = groups.filter(group => 
+    group.courseId === selectedCourse && 
+    (selectedLevel === 0 || group.levelId === selectedLevel)
+  );
+  // Use subjectAssignments instead of subjects to get correct IDs for enrollment
+  const availableSubjects = subjectAssignments.filter(assignment => assignment.levelId === selectedLevel);
 
   const getStudentName = (studentId: number) => {
     const student = students.find(s => s.id === studentId);
@@ -263,7 +422,19 @@ const Enrollments = () => {
 
   const getGroupName = (groupId: number) => {
     const group = groups.find(g => g.id === groupId);
-    return group ? group.groupCode : 'N/A';
+    if (!group) return 'N/A';
+    return `${group.groupCode} - ${group.levelName || `Nivel ${group.levelId}`} - ${formatScheduleShift(group.scheduleShift)}`;
+  };
+
+  const formatScheduleShift = (shift?: string) => {
+    if (!shift) return 'Sin turno';
+    const shifts: Record<string, string> = {
+      MANANA: 'Mañana',
+      TARDE: 'Tarde',
+      NOCHE: 'Noche',
+      MIXTO: 'Mixto'
+    };
+    return shifts[shift] || shift;
   };
 
   return (
@@ -324,47 +495,43 @@ const Enrollments = () => {
                     {currentStep === 1 && (
                       <div>
                         <Label>Seleccionar Estudiante</Label>
-                        <Select
-                          value={selectedStudent.toString()}
-                          onValueChange={(value: string) => setSelectedStudent(parseInt(value))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccione un estudiante" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {students.map((student) => (
-                            <SelectItem key={student.id} value={student.id.toString()}>
-                              {student.firstName} {student.lastName} - {student.identificationNumber}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+                        <Combobox
+                          options={students.map(student => ({
+                            value: student.id.toString(),
+                            label: `${student.firstName} ${student.lastName} - ${student.identificationNumber}`,
+                            searchLabel: `${student.firstName} ${student.lastName} ${student.identificationNumber}`
+                          }))}
+                          value={selectedStudent > 0 ? selectedStudent.toString() : ''}
+                          onValueChange={(value: string) => setSelectedStudent(value ? parseInt(value) : 0)}
+                          placeholder="Seleccione un estudiante"
+                          searchPlaceholder="Buscar por nombre o identificación..."
+                          emptyMessage="No se encontraron estudiantes"
+                        />
+                      </div>
+                    )}
 
                   {/* Step 2: Select Course */}
                   {currentStep === 2 && (
                     <div>
                       <Label>Seleccionar Curso</Label>
-                      <Select
-                        value={selectedCourse.toString()}
+                      <Combobox
+                        options={courses
+                          .filter(c => c.isActive)
+                          .map(course => ({
+                            value: course.id.toString(),
+                            label: course.name,
+                            searchLabel: course.name
+                          }))}
+                          value={selectedCourse > 0 ? selectedCourse.toString() : ''}
                         onValueChange={(value: string) => {
-                          setSelectedCourse(parseInt(value));
+                          setSelectedCourse(value ? parseInt(value) : 0);
                           setSelectedLevel(0);
                           setSelectedGroup(0);
                         }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccione un curso" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {courses.filter(c => c.isActive).map((course) => (
-                            <SelectItem key={course.id} value={course.id.toString()}>
-                              {course.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        placeholder="Seleccione un curso"
+                        searchPlaceholder="Buscar curso..."
+                        emptyMessage="No se encontraron cursos activos"
+                      />
                     </div>
                   )}
 
@@ -412,7 +579,12 @@ const Enrollments = () => {
                             ) : (
                               availableGroups.map((group) => (
                                 <SelectItem key={group.id} value={group.id.toString()}>
-                                  {group.groupCode}
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">Grupo {group.groupCode}</span>
+                                    <span className="text-xs text-gray-500">
+                                      {group.levelName || `Nivel ${group.levelId}`} • {formatScheduleShift(group.scheduleShift)}
+                                    </span>
+                                  </div>
                                 </SelectItem>
                               ))
                             )}
@@ -426,26 +598,95 @@ const Enrollments = () => {
                   {currentStep === 4 && (
                     <div>
                       <Label>Seleccionar Materias</Label>
-                      <div className="border rounded-lg p-4 max-h-60 overflow-y-auto space-y-2">
-                        {availableSubjects.length === 0 ? (
-                          <p className="text-sm text-gray-500">No hay materias disponibles para este nivel</p>
-                        ) : (
-                          availableSubjects.map((subject) => (
-                            <div key={subject.id} className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                id={`subject-${subject.id}`}
-                                checked={selectedSubjects.includes(subject.id)}
-                                onChange={() => handleSubjectToggle(subject.id)}
-                                className="h-4 w-4 rounded border-gray-300"
-                              />
-                              <Label htmlFor={`subject-${subject.id}`} className="font-normal flex-1">
-                                {subject.name} ({subject.code})
-                              </Label>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                      
+                      {/* ESCENARIO A: No hay materias en catálogo (ERROR REAL) */}
+                      {subjects.length === 0 && (
+                        <div className="border rounded-lg p-4 bg-red-50">
+                          <p className="text-red-600 font-medium">
+                            ⚠️ Este nivel no tiene materias configuradas
+                          </p>
+                          <p className="text-sm text-gray-600 mt-2">
+                            Contacte al administrador del sistema.
+                          </p>
+                        </div>
+                      )}
+                      
+                      {/* ESCENARIO B: Hay materias SIN profesores (VÁLIDO en v2.5.0) */}
+                      {subjects.length > 0 && subjectAssignments.length === 0 && (
+                        <div className="space-y-4">
+                          <div className="border rounded-lg p-4 bg-blue-50">
+                            <p className="text-blue-800 font-medium mb-2">
+                              ℹ️ Profesores Pendientes de Asignación
+                            </p>
+                            <p className="text-sm text-gray-700 mb-3">
+                              Este nivel tiene <strong>{subjects.length} materias disponibles</strong>. 
+                              Los profesores aún no han sido asignados, pero puedes inscribirte de todas formas.
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              ✅ Serás notificado cuando se asignen los profesores.
+                            </p>
+                          </div>
+                          
+                          {/* Mostrar materias SIN profesor */}
+                          <div className="border rounded-lg p-4 max-h-60 overflow-y-auto space-y-2">
+                            {subjects.map((subject) => (
+                              <div key={subject.id} className="flex items-start space-x-2">
+                                <input
+                                  type="checkbox"
+                                  id={`subject-${subject.id}`}
+                                  checked={selectedSubjects.includes(subject.id)}
+                                  onChange={() => handleSubjectToggle(subject.id)}
+                                  className="h-4 w-4 rounded border-gray-300 mt-1"
+                                />
+                                <Label htmlFor={`subject-${subject.id}`} className="font-normal flex-1">
+                                  <div>
+                                    <div className="font-medium">{subject.name} ({subject.code})</div>
+                                    <div className="text-xs text-amber-600">
+                                      ⚠️ Profesor pendiente de asignación
+                                    </div>
+                                  </div>
+                                </Label>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* ESCENARIO C: Hay materias CON profesores (IDEAL) */}
+                      {subjects.length > 0 && subjectAssignments.length > 0 && (
+                        <div className="border rounded-lg p-4 max-h-60 overflow-y-auto space-y-2">
+                          {subjects.map((subject) => {
+                            const assignment = subjectAssignments.find(a => a.subjectId === subject.id);
+                            return (
+                              <div key={subject.id} className="flex items-start space-x-2">
+                                <input
+                                  type="checkbox"
+                                  id={`subject-${subject.id}`}
+                                  checked={selectedSubjects.includes(subject.id)}
+                                  onChange={() => handleSubjectToggle(subject.id)}
+                                  className="h-4 w-4 rounded border-gray-300 mt-1"
+                                />
+                                <Label htmlFor={`subject-${subject.id}`} className="font-normal flex-1">
+                                  <div>
+                                    <div className="font-medium">{subject.name} ({subject.code})</div>
+                                    {assignment ? (
+                                      <div className="text-xs text-green-700">
+                                        ✅ Prof. {assignment.professorFullName}
+                                        {assignment.schedule && ` - ${assignment.schedule}`}
+                                      </div>
+                                    ) : (
+                                      <div className="text-xs text-amber-600">
+                                        ⚠️ Profesor pendiente
+                                      </div>
+                                    )}
+                                  </div>
+                                </Label>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      
                       {errors.subjectIds && (
                         <p className="text-sm text-red-500 mt-1">{errors.subjectIds.message}</p>
                       )}
@@ -519,31 +760,99 @@ const Enrollments = () => {
                   </TableRow>
                 ) : (
                   filteredEnrollments.map((enrollment) => {
-                    const studentName = getStudentName(enrollment.studentId);
-                    const groupName = getGroupName(enrollment.groupId);
-                    const course = courses.find(c => {
-                      const group = groups.find(g => g.id === enrollment.groupId);
-                      return group && c.id === group.courseId;
-                    });
+                    // Get student name using response DTO field or lookup
+                    const studentName = enrollment.studentName || getStudentName(enrollment.studentId);
+                    const courseName = enrollment.courseName || courses.find(c => c.id === enrollment.courseId)?.name || 'N/A';
+                    
+                    // Get group from levelEnrollments
+                    let groupDisplay = 'N/A';
+                    if (enrollment.levelEnrollments && enrollment.levelEnrollments.length > 0) {
+                      const levelEnr = enrollment.levelEnrollments[0];
+                      if (levelEnr.groupId) {
+                        const group = groups.find(g => g.id === levelEnr.groupId);
+                        if (group) {
+                          groupDisplay = `${group.groupCode} - ${group.levelName || `Nivel ${group.levelId}`} - ${formatScheduleShift(group.scheduleShift)}`;
+                        } else if (levelEnr.groupCode) {
+                          groupDisplay = levelEnr.groupCode;
+                        }
+                      }
+                    }
+                    
+                    // Get subject count
+                    const subjectCount = enrollment.subjectEnrollments?.length || 0;
+                    const subjectList = enrollment.subjectEnrollments
+                      ?.map(se => se.subjectName || `Materia ${se.subjectId}`)
+                      .join(', ') || 'Sin materias';
                     
                     return (
                       <TableRow key={enrollment.id}>
                         <TableCell className="font-medium">{studentName}</TableCell>
-                        <TableCell>{course?.name || 'N/A'}</TableCell>
-                        <TableCell>{groupName}</TableCell>
+                        <TableCell>{courseName}</TableCell>
+                        <TableCell>{groupDisplay}</TableCell>
                         <TableCell>{new Date(enrollment.enrollmentDate).toLocaleDateString('es-ES')}</TableCell>
                         <TableCell>
-                          <Badge variant="default">Ver materias</Badge>
+                          <div className="flex items-center gap-2">
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Badge variant="default" className="cursor-pointer hover:bg-primary/90" title="Click para ver detalles">
+                                  {subjectCount} {subjectCount === 1 ? 'materia' : 'materias'}
+                                </Badge>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-80" align="start">
+                                <div className="space-y-3">
+                                  <h4 className="font-semibold text-sm">Materias Inscritas</h4>
+                                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                                    {enrollment.subjectEnrollments && enrollment.subjectEnrollments.length > 0 ? (
+                                      enrollment.subjectEnrollments.map((se, idx) => (
+                                        <div key={idx} className="flex items-start gap-2 p-2 rounded-md bg-slate-50 border border-slate-200">
+                                          <div className="flex-shrink-0 mt-0.5">
+                                            {se.professorName ? (
+                                              <Check className="h-4 w-4 text-green-600" />
+                                            ) : (
+                                              <span className="text-amber-600">⚠️</span>
+                                            )}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium truncate">
+                                              {se.subjectName || `Materia ${se.subjectId}`}
+                                            </p>
+                                            {se.subjectCode && (
+                                              <p className="text-xs text-slate-500">{se.subjectCode}</p>
+                                            )}
+                                            <p className="text-xs text-slate-600 mt-0.5">
+                                              {se.professorName ? (
+                                                <span>Prof: {se.professorName}</span>
+                                              ) : (
+                                                <span className="text-amber-600">Profesor pendiente</span>
+                                              )}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <p className="text-sm text-slate-500">Sin materias inscritas</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+                            {enrollment.subjectEnrollments?.some(se => !se.professorName) && (
+                              <Badge variant="outline" className="text-amber-600 border-amber-600" title="Algunas materias sin profesor">
+                                ⚠️ Prof. pendiente
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge variant={
-                            enrollment.status === 'ACTIVE' ? 'success' :
-                            enrollment.status === 'COMPLETED' ? 'default' :
+                            enrollment.enrollmentStatus === 'ACTIVO' ? 'success' :
+                            enrollment.enrollmentStatus === 'EGRESADO' ? 'default' :
                             'error'
                           }>
-                            {enrollment.status === 'ACTIVE' ? 'ACTIVA' : 
-                             enrollment.status === 'COMPLETED' ? 'COMPLETADA' : 
-                             enrollment.status === 'WITHDRAWN' ? 'RETIRADA' : enrollment.status}
+                            {enrollment.enrollmentStatus === 'ACTIVO' ? 'Activo' : 
+                             enrollment.enrollmentStatus === 'EGRESADO' ? 'Egresado' : 
+                             enrollment.enrollmentStatus === 'RETIRADO' ? 'Retirado' : 
+                             enrollment.enrollmentStatus === 'INACTIVO' ? 'Inactivo' : enrollment.enrollmentStatus}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">

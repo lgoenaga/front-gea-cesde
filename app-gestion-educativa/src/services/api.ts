@@ -3,7 +3,7 @@ import type { ApiResponse, PagedResponse, PaginationParams, Student, StudentDTO,
 
 // Re-export all services from their respective files
 export { courseService, courseGroupService } from './courseService';
-export { levelService, subjectService } from './academicService';
+export { levelService, subjectService, subjectAssignmentService } from './academicService';
 export { academicPeriodService, courseEnrollmentService, levelEnrollmentService, subjectEnrollmentService } from './enrollmentService';
 export { gradeService, attendanceService } from './gradeService';
 export { userService, roleService } from './userService';

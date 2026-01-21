@@ -63,10 +63,15 @@ Sistema web completo para la gestión académica de instituciones educativas, de
 ### 📝 Matrículas
 
 - ✅ Wizard multi-paso para inscripción
-- ✅ Selección de estudiante
+- ✅ Sistema jerárquico de 3 niveles
+- ✅ Selección de estudiante con búsqueda
 - ✅ Selección de curso y nivel
-- ✅ Selección de grupo
-- ✅ Asignación de materias
+- ✅ Selección de grupo con horarios
+- ✅ Asignación de materias con profesores
+- ✅ Trazabilidad completa: Curso → Nivel → Grupo → Materias
+- ✅ Consulta de datos relacionados
+- ✅ Validación automática de jerarquías
+- ✅ Manejo de errores descriptivos
 - ✅ Validación completa del proceso
 
 ### 📊 Calificaciones
@@ -174,7 +179,7 @@ app-gestion-educativa/
 │   │   ├── userService.ts           # Servicios de usuarios
 │   │   ├── courseService.ts         # Servicios de cursos y grupos
 │   │   ├── academicService.ts       # Servicios académicos
-│   │   ├── enrollmentService.ts     # Servicios de matrículas
+│   │   ├── enrollmentService.ts     # Servicios de matrículas (3 niveles)
 │   │   └── gradeService.ts          # Servicios de notas y asistencia
 │   ├── types/
 │   │   └── index.ts                 # Definiciones de tipos TypeScript
@@ -353,23 +358,44 @@ app-gestion-educativa/
 - ✅ **Delete:** Eliminación
 - 🔗 Relación con usuarios
 
-### 10. 📝 Matrículas
+### 10. 📝 Matrículas (Sistema Completo)
 
 **Ruta:** `/enrollments`  
-**Descripción:** Sistema de inscripción de estudiantes
+**Descripción:** Sistema de inscripción jerárquica de estudiantes (3 niveles)
+
+**Arquitectura de Inscripción:**
+
+- **Nivel 1:** CourseEnrollment (Inscripción al curso)
+- **Nivel 2:** LevelEnrollment (Inscripción al nivel con grupo)
+- **Nivel 3:** SubjectEnrollment (Inscripción a materias con profesores)
 
 **Funcionalidades:**
 
 - ✅ **Wizard Multi-Paso:**
-  - **Paso 1:** Selección de estudiante
-  - **Paso 2:** Selección de curso
-  - **Paso 3:** Selección de nivel y grupo
-  - **Paso 4:** Selección de materias y fecha
-- ✅ Carga dinámica de opciones
-- ✅ Validación en cada paso
-- ✅ Vista de matrículas registradas
-- ✅ Eliminación de matrícula
-- 📊 Indicador de estado (Activa, Completada, Retirada)
+  - **Paso 1:** Selección de estudiante (búsqueda inteligente)
+  - **Paso 2:** Selección de curso (solo cursos activos)
+  - **Paso 3:** Selección de nivel y grupo (con horarios)
+  - **Paso 4:** Selección de materias con profesores asignados
+- ✅ **Creación Completa en 3 Niveles:**
+  - CourseEnrollment → LevelEnrollment → SubjectEnrollments
+  - Trazabilidad completa: Curso → Nivel → Grupo → Materias
+- ✅ **Consulta de Información Completa:**
+  - Vista de grupos asignados
+  - Cantidad de materias inscritas
+  - Profesores por materia
+- ✅ **Validaciones Automáticas:**
+  - Verifica que CourseEnrollment esté ACTIVO
+  - Valida que materias pertenezcan al nivel correcto
+  - Valida período académico activo
+  - Previene inscripciones duplicadas
+- ✅ **Manejo de Errores Mejorado:**
+  - Mensajes descriptivos del backend
+  - Feedback específico por tipo de error
+- ✅ Carga dinámica de opciones por contexto
+- ✅ Vista completa de matrículas con datos relacionados
+- ✅ Eliminación con cascada automática
+- 📊 Estados: EN_CURSO, APROBADO, REPROBADO, RETIRADO
+- 📄 Ver documentación técnica: `IMPLEMENTATION-COMPLETE-ENROLLMENTS.md`
 
 ### 11. 📊 Calificaciones
 
@@ -649,11 +675,48 @@ La aplicación consume los siguientes endpoints:
 - `GET /api/academic-periods` - Listar períodos
 - CRUD completo para cada recurso
 
-#### Matrículas
+#### Matrículas (Sistema Jerárquico)
 
-- `GET /api/course-enrollments` - Listar matrículas
-- `POST /api/course-enrollments` - Crear matrícula
+**CourseEnrollment:**
+
+- `GET /api/course-enrollments` - Listar matrículas de curso
+- `GET /api/course-enrollments/{id}` - Obtener matrícula específica
+- `GET /api/course-enrollments/student/{id}` - Por estudiante
+- `GET /api/course-enrollments/course/{id}` - Por curso
+- `GET /api/course-enrollments/period/{id}` - Por período
+- `POST /api/course-enrollments` - Crear matrícula de curso
+- `PUT /api/course-enrollments/{id}` - Actualizar matrícula
+- `PATCH /api/course-enrollments/{id}/status` - Actualizar estado
 - `DELETE /api/course-enrollments/{id}` - Eliminar matrícula
+
+**LevelEnrollment:**
+
+- `GET /api/level-enrollments` - Listar matrículas de nivel
+- `GET /api/level-enrollments/paged` - Listar con paginación
+- `GET /api/level-enrollments/{id}` - Obtener específica
+- `GET /api/level-enrollments/course-enrollment/{id}` - Por matrícula de curso
+- `GET /api/level-enrollments/level/{id}` - Por nivel
+- `GET /api/level-enrollments/period/{id}` - Por período
+- `GET /api/level-enrollments/group/{id}` - Por grupo
+- `GET /api/level-enrollments/status/{status}` - Por estado
+- `POST /api/level-enrollments` - Crear matrícula de nivel
+- `PUT /api/level-enrollments/{id}` - Actualizar
+- `PATCH /api/level-enrollments/{id}/status?status=X` - Actualizar estado
+- `DELETE /api/level-enrollments/{id}` - Eliminar
+
+**SubjectEnrollment:**
+
+- `GET /api/subject-enrollments` - Listar matrículas de materia
+- `GET /api/subject-enrollments/paged` - Listar con paginación
+- `GET /api/subject-enrollments/{id}` - Obtener específica
+- `GET /api/subject-enrollments/level-enrollment/{id}` - Por matrícula de nivel
+- `GET /api/subject-enrollments/subject-assignment/{id}` - Por asignación de materia
+- `GET /api/subject-enrollments/status/{status}` - Por estado
+- `POST /api/subject-enrollments` - Crear matrícula de materia
+- `POST /api/subject-enrollments/batch` - Crear múltiples (batch)
+- `PUT /api/subject-enrollments/{id}` - Actualizar
+- `PATCH /api/subject-enrollments/{id}/status?status=X` - Actualizar estado
+- `DELETE /api/subject-enrollments/{id}` - Eliminar
 
 #### Calificaciones
 
@@ -696,6 +759,40 @@ El backend estará disponible en: `http://localhost:8080`
 --cesde-light: #f5a3d0; /* Rosa claro */
 --cesde-light-green: #d4e157; /* Verde claro */
 ```
+
+---
+
+## 📚 Documentación Adicional
+
+### Sistema de Matrículas (Detallado)
+
+Para información técnica completa sobre el sistema de inscripciones jerárquicas:
+
+📄 **[IMPLEMENTATION-COMPLETE-ENROLLMENTS.md](IMPLEMENTATION-COMPLETE-ENROLLMENTS.md)**
+
+Este documento incluye:
+
+- Arquitectura de 3 niveles (CourseEnrollment → LevelEnrollment → SubjectEnrollment)
+- Flujo completo de inscripción
+- Ejemplos de código TypeScript/React
+- Validaciones automáticas del backend
+- Manejo de errores específicos
+- Troubleshooting común
+- Consultas SQL útiles
+
+### Guía del Backend
+
+Para información sobre los endpoints del backend API:
+
+📄 **[../back-bd-API/FRONTEND-ENROLLMENT-GUIDE.md](../back-bd-API/FRONTEND-ENROLLMENT-GUIDE.md)**
+
+Este documento incluye:
+
+- 30+ endpoints de inscripciones
+- Ejemplos de requests/responses
+- Validaciones de negocio
+- Estados y enums permitidos
+- Datos de prueba para Postman
 
 ---
 
@@ -790,6 +887,35 @@ Para soporte, contacta a: soporte@cesde.edu.co
 ---
 
 ## 🔄 Changelog
+
+### v2.0.0 (2026-01-20) - Sistema de Matrículas Completo
+
+**🎓 Nuevas Funcionalidades - Matrículas:**
+
+- ✅ Sistema jerárquico de inscripciones en 3 niveles
+- ✅ Integración completa con endpoints del backend (v2.4.0)
+- ✅ LevelEnrollment: Matrícula con nivel y grupo
+- ✅ SubjectEnrollment: Inscripción a materias con profesores
+- ✅ Trazabilidad completa: Curso → Nivel → Grupo → Materias
+- ✅ Consulta de datos relacionados en tabla principal
+- ✅ Display de grupos y materias en tiempo real
+- ✅ Validación automática de jerarquías (backend)
+- ✅ Manejo de errores descriptivos con mensajes específicos
+
+**🔧 Mejoras Técnicas:**
+
+- ✅ 12 métodos nuevos en `enrollmentService.ts`
+- ✅ Tipos TypeScript mejorados con enums específicos
+- ✅ `loadInitialData()` carga LevelEnrollments y SubjectEnrollments
+- ✅ Uso de SubjectAssignments para mostrar profesores
+- ✅ Creación de inscripciones en 3 pasos (CourseEnrollment → LevelEnrollment → SubjectEnrollments)
+- ✅ Estados por nivel: ACTIVO (curso), EN_CURSO/APROBADO/REPROBADO/RETIRADO (nivel/materia)
+
+**📄 Documentación:**
+
+- ✅ `IMPLEMENTATION-COMPLETE-ENROLLMENTS.md` - Guía técnica completa
+- ✅ README actualizado con arquitectura de 3 niveles
+- ✅ Documentación de 30+ endpoints de inscripciones
 
 ### v1.0.0 (2026-01-15)
 
