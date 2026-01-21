@@ -12,15 +12,19 @@ import { toast } from 'sonner';
 // Import API services
 import { courseGroupService } from '../services/courseService';
 import { subjectService } from '../services/academicService';
-import { courseEnrollmentService } from '../services/enrollmentService';
+import { levelEnrollmentService, subjectEnrollmentService } from '../services/enrollmentService';
 import { attendanceService } from '../services/gradeService';
 import { studentService } from '../services/api';
 
 // Import types
-import type { CourseGroup, Subject, CourseEnrollment, Attendance as AttendanceRecord, AttendanceDTO, Student } from '../types';
+import type { CourseGroup, Subject, Attendance as AttendanceRecord, AttendanceDTO, Student } from '../types';
 
-interface EnrollmentWithStudent extends CourseEnrollment {
-  studentName?: string;
+interface StudentEnrollmentInfo {
+  studentId: number;
+  studentName: string;
+  levelEnrollmentId: number;
+  subjectEnrollmentId?: number;
+  enrollmentStatus: string;
 }
 
 type AttendanceStatus = 'PRESENTE' | 'AUSENTE' | 'TARDANZA' | 'EXCUSADO';
@@ -34,14 +38,14 @@ const ATTENDANCE_STATUSES: { value: AttendanceStatus; label: string; color: 'suc
 
 const Attendance = () => {
   // Loading states
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [loadingEnrollments, setLoadingEnrollments] = useState(false);
 
   // Data states
   const [groups, setGroups] = useState<CourseGroup[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
-  const [enrollments, setEnrollments] = useState<EnrollmentWithStudent[]>([]);
+  const [studentEnrollments, setStudentEnrollments] = useState<StudentEnrollmentInfo[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   
   const [selectedGroup, setSelectedGroup] = useState<number>(0);
@@ -60,12 +64,21 @@ const Attendance = () => {
 
   // Load enrollments when group changes
   useEffect(() => {
-    if (selectedGroup > 0) {
+    if (selectedGroup > 0 && students.length > 0) {
       loadEnrollments(selectedGroup);
     } else {
-      setEnrollments([]);
+      setStudentEnrollments([]);
     }
-  }, [selectedGroup]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGroup, students]);
+
+  // Reload when subject changes
+  useEffect(() => {
+    if (selectedGroup > 0 && selectedSubject > 0 && students.length > 0) {
+      loadEnrollments(selectedGroup);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSubject]);
 
   // Load existing attendance when filters change
   useEffect(() => {
@@ -77,7 +90,6 @@ const Attendance = () => {
 
   const loadInitialData = async () => {
     try {
-      setIsLoading(true);
       const [groupsData, subjectsData, studentsData] = await Promise.all([
         courseGroupService.getAll(),
         subjectService.getAll(),
@@ -90,30 +102,61 @@ const Attendance = () => {
     } catch (error) {
       console.error('Error loading initial data:', error);
       toast.error('Error al cargar los datos iniciales');
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const loadEnrollments = async (groupId: number) => {
+    if (!groupId) {
+      setStudentEnrollments([]);
+      return;
+    }
+
     try {
-      const enrollmentsData = await courseEnrollmentService.getAll();
-      const filteredEnrollments = enrollmentsData.filter(e => e.groupId === groupId);
+      setLoadingEnrollments(true);
       
-      // Add student names to enrollments
-      const enrollmentsWithNames = filteredEnrollments.map(enrollment => {
-        const student = students.find(s => s.id === enrollment.studentId);
-        return {
-          ...enrollment,
-          studentName: student ? `${student.firstName} ${student.lastName}` : 'N/A'
-        };
-      });
+      // Obtener inscripciones de nivel por grupo (correcto)
+      const levelEnrolls = await levelEnrollmentService.getByGroup(groupId);
       
-      setEnrollments(enrollmentsWithNames);
+      if (levelEnrolls.length === 0) {
+        toast.info('No hay estudiantes inscritos en este grupo');
+        setStudentEnrollments([]);
+        return;
+      }
+
+      // Construir información de estudiantes con sus inscripciones
+      const studentInfos: StudentEnrollmentInfo[] = [];
+      
+      for (const levelEnroll of levelEnrolls) {
+        // Obtener inscripciones de materias para este nivel
+        const subjectEnrolls = await subjectEnrollmentService.getByLevelEnrollment(levelEnroll.id);
+        
+        // Encontrar el estudiante
+        const student = students.find(s => s.id === levelEnroll.courseEnrollmentId);
+        const studentName = student ? `${student.firstName} ${student.lastName}` : 
+                           (levelEnroll as any).studentName || 'Estudiante desconocido';
+        
+        // Buscar la inscripción de la materia seleccionada
+        const subjectEnroll = selectedSubject > 0 
+          ? subjectEnrolls.find(se => se.subjectId === selectedSubject)
+          : undefined;
+        
+        studentInfos.push({
+          studentId: levelEnroll.courseEnrollmentId,
+          studentName: studentName,
+          levelEnrollmentId: levelEnroll.id,
+          subjectEnrollmentId: subjectEnroll?.id,
+          enrollmentStatus: levelEnroll.status
+        });
+      }
+      
+      setStudentEnrollments(studentInfos);
+      
     } catch (error) {
       console.error('Error loading enrollments:', error);
-      toast.error('Error al cargar las matrículas');
-      setEnrollments([]);
+      toast.error('Error al cargar las inscripciones');
+      setStudentEnrollments([]);
+    } finally {
+      setLoadingEnrollments(false);
     }
   };
 
@@ -121,9 +164,13 @@ const Attendance = () => {
     try {
       const allAttendance = await attendanceService.getAll();
       // Filter by current session parameters
+      const validSubjectEnrollmentIds = studentEnrollments
+        .filter(e => e.subjectEnrollmentId)
+        .map(e => e.subjectEnrollmentId!);
+        
       const filtered = allAttendance.filter((a: AttendanceRecord) => 
         a.assignmentDate === sessionDate &&
-        enrollments.some(e => e.id === a.subjectEnrollmentId)
+        validSubjectEnrollmentIds.includes(a.subjectEnrollmentId)
       );
       
       setAttendanceRecords(filtered);
@@ -134,41 +181,41 @@ const Attendance = () => {
     }
   };
 
-  const filteredEnrollments = enrollments.filter(
-    enrollment => 
-      enrollment.groupId === selectedGroup &&
-      (enrollment.studentName?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
-  );
-
-  const getExistingAttendance = (enrollmentId: number) => {
+  const getExistingAttendance = (subjectEnrollmentId: number | undefined) => {
+    if (!subjectEnrollmentId) return undefined;
+    
     return attendanceRecords.find(
       record => 
-        record.subjectEnrollmentId === enrollmentId &&
+        record.subjectEnrollmentId === subjectEnrollmentId &&
         record.assignmentDate === sessionDate
     );
   };
 
-  const getAttendanceStatus = (enrollmentId: number): AttendanceStatus => {
+  const getAttendanceStatus = (subjectEnrollmentId: number | undefined): AttendanceStatus => {
+    if (!subjectEnrollmentId) return 'AUSENTE';
+    
     // First check temporary selections
-    if (enrollmentId in attendanceSelections) {
-      return attendanceSelections[enrollmentId];
+    if (subjectEnrollmentId in attendanceSelections) {
+      return attendanceSelections[subjectEnrollmentId];
     }
     // Then check existing records
-    const existing = getExistingAttendance(enrollmentId);
+    const existing = getExistingAttendance(subjectEnrollmentId);
     return existing?.status as AttendanceStatus ?? 'PRESENTE';
   };
 
-  const handleStatusChange = (enrollmentId: number, status: AttendanceStatus) => {
+  const handleStatusChange = (subjectEnrollmentId: number, status: AttendanceStatus) => {
     setAttendanceSelections(prev => ({
       ...prev,
-      [enrollmentId]: status
+      [subjectEnrollmentId]: status
     }));
   };
 
   const handleMarkAll = (status: AttendanceStatus) => {
     const newSelections: Record<number, AttendanceStatus> = {};
-    filteredEnrollments.forEach(enrollment => {
-      newSelections[enrollment.id] = status;
+    studentEnrollments.forEach(enrollment => {
+      if (enrollment.subjectEnrollmentId) {
+        newSelections[enrollment.subjectEnrollmentId] = status;
+      }
     });
     setAttendanceSelections(newSelections);
   };
@@ -183,16 +230,18 @@ const Attendance = () => {
       setIsSaving(true);
       const promises: Promise<AttendanceRecord>[] = [];
 
-      filteredEnrollments.forEach(enrollment => {
-        const status = getAttendanceStatus(enrollment.id);
+      studentEnrollments.forEach(enrollment => {
+        if (!enrollment.subjectEnrollmentId) return; // Skip students not enrolled in this subject
+        
+        const status = getAttendanceStatus(enrollment.subjectEnrollmentId);
         const existing = attendanceRecords.find(
-          record => record.subjectEnrollmentId === enrollment.id
+          record => record.subjectEnrollmentId === enrollment.subjectEnrollmentId
         );
 
         if (existing) {
           // Update existing record
           const updateData: AttendanceDTO = {
-            subjectEnrollmentId: enrollment.id,
+            subjectEnrollmentId: enrollment.subjectEnrollmentId,
             classSessionId: 1, // TODO: Use actual session ID
             assignmentDate: sessionDate,
             status: status,
@@ -202,7 +251,7 @@ const Attendance = () => {
         } else {
           // Create new record
           const createData: AttendanceDTO = {
-            subjectEnrollmentId: enrollment.id,
+            subjectEnrollmentId: enrollment.subjectEnrollmentId,
             classSessionId: 1, // TODO: Use actual session ID
             assignmentDate: sessionDate,
             status: status,
@@ -235,16 +284,15 @@ const Attendance = () => {
     const late = records.filter(r => r.status === 'TARDANZA').length;
     const excused = records.filter(r => r.status === 'EXCUSADO').length;
 
-    const percentage = total > 0 ? ((present + late * 0.5) / total * 100).toFixed(1) : '0.0';
+    const percentage = total > 0 ? parseFloat(((present + late * 0.5) / total * 100).toFixed(1)) : 0;
 
     return { total, present, absent, late, excused, percentage };
   };
 
-  const getPercentageColor = (percentage: string): 'success' | 'warning' | 'error' | 'default' => {
-    const value = parseFloat(percentage);
-    if (value >= 80) return 'success';
-    if (value >= 70) return 'warning';
-    if (value > 0) return 'error';
+  const getPercentageColor = (percentage: number): 'success' | 'warning' | 'error' | 'default' => {
+    if (percentage >= 80) return 'success';
+    if (percentage >= 70) return 'warning';
+    if (percentage > 0) return 'error';
     return 'default';
   };
 
@@ -252,7 +300,14 @@ const Attendance = () => {
     <div className="p-6">
       <Card>
         <CardHeader>
-          <CardTitle>Control de Asistencia</CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle>Control de Asistencia</CardTitle>
+            {selectedGroup > 0 && (
+              <Badge variant="info">
+                {studentEnrollments.length} estudiante{studentEnrollments.length !== 1 ? 's' : ''} inscrito{studentEnrollments.length !== 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Filters */}
@@ -269,7 +324,10 @@ const Attendance = () => {
                 <SelectContent>
                   {groups.map((group) => (
                     <SelectItem key={group.id} value={group.id.toString()}>
-                      {group.groupCode}
+                      {group.courseName && group.levelName 
+                        ? `${group.courseName} - ${group.levelName} - Grupo ${group.groupCode}${group.academicPeriodName ? ` (${group.academicPeriodName})` : ''}`
+                        : `Grupo ${group.groupCode}`
+                      }
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -362,6 +420,7 @@ const Attendance = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-48">Estudiante</TableHead>
+                      <TableHead className="text-center">Estado Inscripción</TableHead>
                       <TableHead className="text-center">Estado</TableHead>
                       <TableHead className="text-center">Sesiones Totales</TableHead>
                       <TableHead className="text-center">Presentes</TableHead>
@@ -372,63 +431,79 @@ const Attendance = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {isLoading ? (
+                    {loadingEnrollments ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8">
+                        <TableCell colSpan={9} className="text-center py-8">
                           <Loader2 className="h-8 w-8 animate-spin mx-auto text-gray-400" />
-                          <p className="text-gray-500 mt-2">Cargando...</p>
+                          <p className="text-gray-500 mt-2">Cargando inscripciones...</p>
                         </TableCell>
                       </TableRow>
-                    ) : filteredEnrollments.length === 0 ? (
+                    ) : studentEnrollments.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center text-gray-500">
+                        <TableCell colSpan={9} className="text-center text-gray-500">
                           No se encontraron estudiantes matriculados en este grupo
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredEnrollments.map((enrollment) => {
-                        const currentStatus = getAttendanceStatus(enrollment.id);
-                        const stats = calculateAttendanceStats(enrollment.id);
+                      studentEnrollments.map((enrollment) => {
+                        const isEnrolledInSubject = !!enrollment.subjectEnrollmentId;
+                        const currentStatus = isEnrolledInSubject ? getAttendanceStatus(enrollment.subjectEnrollmentId!) : 'NO_INSCRITO';
+                        const stats = isEnrolledInSubject ? calculateAttendanceStats(enrollment.subjectEnrollmentId!) : null;
                         
                         return (
-                          <TableRow key={enrollment.id}>
+                          <TableRow key={enrollment.levelEnrollmentId}>
                             <TableCell className="font-medium">
                               {enrollment.studentName}
                             </TableCell>
                             <TableCell className="text-center">
-                              <div className="flex gap-1 justify-center flex-wrap">
-                                {ATTENDANCE_STATUSES.map(status => (
-                                  <Button
-                                    key={status.value}
-                                    variant={currentStatus === status.value ? "default" : "outline"}
-                                    size="sm"
-                                    onClick={() => handleStatusChange(enrollment.id, status.value)}
-                                    className="text-xs"
-                                    disabled={isSaving}
-                                  >
-                                    {status.label.substring(0, 1)}
-                                  </Button>
-                                ))}
-                              </div>
+                              {isEnrolledInSubject ? (
+                                <Badge variant="success">Inscrito</Badge>
+                              ) : (
+                                <Badge variant="default">No inscrito en esta materia</Badge>
+                              )}
                             </TableCell>
-                            <TableCell className="text-center">{stats.total}</TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant="success">{stats.present}</Badge>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant="error">{stats.absent}</Badge>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant="warning">{stats.late}</Badge>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant="info">{stats.excused}</Badge>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant={getPercentageColor(stats.percentage)}>
-                                {stats.percentage}%
-                              </Badge>
-                            </TableCell>
+                            {isEnrolledInSubject ? (
+                              <>
+                                <TableCell className="text-center">
+                                  <div className="flex gap-1 justify-center flex-wrap">
+                                    {ATTENDANCE_STATUSES.map(status => (
+                                      <Button
+                                        key={status.value}
+                                        variant={currentStatus === status.value ? "default" : "outline"}
+                                        size="sm"
+                                        onClick={() => handleStatusChange(enrollment.subjectEnrollmentId!, status.value)}
+                                        className="text-xs"
+                                        disabled={isSaving}
+                                      >
+                                        {status.label.substring(0, 1)}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-center">{stats?.total || 0}</TableCell>
+                                <TableCell className="text-center">
+                                  <Badge variant="success">{stats?.present || 0}</Badge>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Badge variant="error">{stats?.absent || 0}</Badge>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Badge variant="warning">{stats?.late || 0}</Badge>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Badge variant="info">{stats?.excused || 0}</Badge>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Badge variant={getPercentageColor(stats?.percentage || 0)}>
+                                    {stats?.percentage || 0}%
+                                  </Badge>
+                                </TableCell>
+                              </>
+                            ) : (
+                              <TableCell colSpan={7} className="text-center text-gray-400 italic">
+                                No inscrito en esta materia
+                              </TableCell>
+                            )}
                           </TableRow>
                         );
                       })

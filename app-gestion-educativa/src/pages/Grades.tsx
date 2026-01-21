@@ -12,19 +12,19 @@ import { toast } from 'sonner';
 // Import API services
 import { courseGroupService } from '../services/courseService';
 import { subjectService } from '../services/academicService';
-import { courseEnrollmentService } from '../services/enrollmentService';
+import { levelEnrollmentService, subjectEnrollmentService } from '../services/enrollmentService';
 import { gradeService } from '../services/gradeService';
 import { studentService } from '../services/api';
 
 // Import types
-import type { CourseGroup } from '../types';
-import type { Subject } from '../types';
-import type { CourseEnrollment } from '../types';
-import type { Grade } from '../types';
-import type { Student } from '../types';
+import type { CourseGroup, Subject, Grade, Student } from '../types';
 
-interface EnrollmentWithStudent extends CourseEnrollment {
-  studentName?: string;
+interface StudentEnrollmentInfo {
+  studentId: number;
+  studentName: string;
+  levelEnrollmentId: number;
+  subjectEnrollmentId?: number;
+  enrollmentStatus: string;
 }
 
 const GRADE_PERIODS = [1, 2, 3] as const;
@@ -35,13 +35,15 @@ const Grades = () => {
   // State for data from API
   const [groups, setGroups] = useState<CourseGroup[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [enrollments, setEnrollments] = useState<EnrollmentWithStudent[]>([]);
+
   const [students, setStudents] = useState<Student[]>([]);
+  const [studentEnrollments, setStudentEnrollments] = useState<StudentEnrollmentInfo[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   
   // Loading states
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [loadingEnrollments, setLoadingEnrollments] = useState(false);
 
   const [selectedGroup, setSelectedGroup] = useState<number>(0);
   const [selectedSubject, setSelectedSubject] = useState<number>(0);
@@ -59,12 +61,23 @@ const Grades = () => {
 
   // Load enrollments and grades when group changes
   useEffect(() => {
-    if (selectedGroup > 0) {
+    if (selectedGroup > 0 && students.length > 0) {
+      loadEnrollments();
+    } else {
+      setStudentEnrollments([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGroup, students]);
+
+  // Reload enrollments when subject changes to update subjectEnrollmentId
+  useEffect(() => {
+    if (selectedGroup > 0 && selectedSubject > 0 && students.length > 0) {
       loadEnrollments();
     }
-  }, [selectedGroup]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSubject]);
 
-  // Load grades when subject, period, or moment changes
+  // Load grades when filters change
   useEffect(() => {
     if (selectedGroup > 0 && selectedSubject > 0) {
       loadGrades();
@@ -91,23 +104,57 @@ const Grades = () => {
   };
 
   const loadEnrollments = async () => {
+    if (!selectedGroup) {
+      setStudentEnrollments([]);
+      return;
+    }
+
     try {
-      const enrollmentsData = await courseEnrollmentService.getAll();
-      const filteredEnrollments = enrollmentsData.filter(e => e.groupId === selectedGroup);
+      setLoadingEnrollments(true);
       
-      // Add student names to enrollments
-      const enrollmentsWithNames = filteredEnrollments.map(enrollment => {
-        const student = students.find(s => s.id === enrollment.studentId);
-        return {
-          ...enrollment,
-          studentName: student ? `${student.firstName} ${student.lastName}` : 'N/A'
-        };
-      });
+      // Obtener inscripciones de nivel por grupo (correcto)
+      const levelEnrolls = await levelEnrollmentService.getByGroup(selectedGroup);
       
-      setEnrollments(enrollmentsWithNames);
+      if (levelEnrolls.length === 0) {
+        toast.info('No hay estudiantes inscritos en este grupo');
+        setStudentEnrollments([]);
+        return;
+      }
+
+      // Construir información de estudiantes con sus inscripciones
+      const studentInfos: StudentEnrollmentInfo[] = [];
+      
+      for (const levelEnroll of levelEnrolls) {
+        // Obtener inscripciones de materias para este nivel
+        const subjectEnrolls = await subjectEnrollmentService.getByLevelEnrollment(levelEnroll.id);
+        
+        // Encontrar el estudiante (del courseEnrollment)
+        const student = students.find(s => s.id === levelEnroll.courseEnrollmentId);
+        const studentName = student ? `${student.firstName} ${student.lastName}` : 
+                           (levelEnroll as any).studentName || 'Estudiante desconocido';
+        
+        // Buscar la inscripción de la materia seleccionada (si hay una seleccionada)
+        const subjectEnroll = selectedSubject > 0 
+          ? subjectEnrolls.find(se => se.subjectId === selectedSubject)
+          : undefined;
+        
+        studentInfos.push({
+          studentId: levelEnroll.courseEnrollmentId,
+          studentName: studentName,
+          levelEnrollmentId: levelEnroll.id,
+          subjectEnrollmentId: subjectEnroll?.id,
+          enrollmentStatus: levelEnroll.status
+        });
+      }
+      
+      setStudentEnrollments(studentInfos);
+      
     } catch (error) {
       console.error('Error loading enrollments:', error);
-      toast.error('Error al cargar las matrículas');
+      toast.error('Error al cargar las inscripciones');
+      setStudentEnrollments([]);
+    } finally {
+      setLoadingEnrollments(false);
     }
   };
 
@@ -122,40 +169,50 @@ const Grades = () => {
     }
   };
 
-  const filteredEnrollments = enrollments.filter(
+  const filteredEnrollments = studentEnrollments.filter(
     enrollment => 
-      enrollment.groupId === selectedGroup &&
-      (enrollment.studentName?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
+      enrollment.studentName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const getGradeKey = (enrollmentId: number, component: string) => 
-    `${enrollmentId}-${selectedSubject}-${selectedPeriod}-${selectedMoment}-${component}`;
+  const getGradeKey = (subjectEnrollmentId: number, component: string) => 
+    `${subjectEnrollmentId}-${selectedPeriod}-${selectedMoment}-${component}`;
 
-  const getGradeValue = (enrollmentId: number, component: typeof GRADE_COMPONENTS[number]) => {
+  const getGradeValue = (subjectEnrollmentId: number, component: typeof GRADE_COMPONENTS[number]) => {
+    if (!subjectEnrollmentId) return '';
+    
     const grade = grades.find(
-      g => g.enrollmentId === enrollmentId &&
-           g.subjectId === selectedSubject &&
-           g.gradePeriod === selectedPeriod &&
-           g.gradeMoment === selectedMoment &&
-           g.gradeComponent === component
+      g => g.subjectEnrollmentId === subjectEnrollmentId &&
+           g.gradePeriodId === selectedPeriod &&
+           g.gradeComponentId === getComponentId(component)
     );
     return grade?.gradeValue ?? '';
   };
 
-  const handleGradeChange = (enrollmentId: number, component: string, value: string) => {
-    const key = getGradeKey(enrollmentId, component);
+  const getComponentId = (component: string): number => {
+    const componentMap: Record<string, number> = {
+      'CONOCIMIENTOS': 1,
+      'DESEMPEÑO': 2,
+      'PRODUCTO': 3
+    };
+    return componentMap[component] || 1;
+  };
+
+  const handleGradeChange = (subjectEnrollmentId: number, component: string, value: string) => {
+    const key = getGradeKey(subjectEnrollmentId, component);
     setGradeInputs(prev => ({
       ...prev,
       [key]: value
     }));
   };
 
-  const getInputValue = (enrollmentId: number, component: typeof GRADE_COMPONENTS[number]) => {
-    const key = getGradeKey(enrollmentId, component);
+  const getInputValue = (subjectEnrollmentId: number, component: typeof GRADE_COMPONENTS[number]) => {
+    if (!subjectEnrollmentId) return '';
+    
+    const key = getGradeKey(subjectEnrollmentId, component);
     if (key in gradeInputs) {
       return gradeInputs[key];
     }
-    return getGradeValue(enrollmentId, component).toString();
+    return getGradeValue(subjectEnrollmentId, component).toString();
   };
 
   const handleSaveGrades = async () => {
@@ -164,44 +221,38 @@ const Grades = () => {
       const gradesToSave: any[] = [];
 
       Object.entries(gradeInputs).forEach(([key, value]) => {
-        const [enrollmentId, subjectId, period, moment, component] = key.split('-');
+        const [subjectEnrollmentId, period, , component] = key.split('-');
         const numValue = parseFloat(value);
 
         if (value !== '' && !isNaN(numValue) && numValue >= 0 && numValue <= 5) {
+          const componentId = getComponentId(component);
+          
           const existingGrade = grades.find(
-            g => g.enrollmentId === parseInt(enrollmentId) &&
-                 g.subjectId === parseInt(subjectId) &&
-                 g.gradePeriod === parseInt(period) &&
-                 g.gradeMoment === parseInt(moment) &&
-                 g.gradeComponent === component
+            g => g.subjectEnrollmentId === parseInt(subjectEnrollmentId) &&
+                 g.gradePeriodId === parseInt(period) &&
+                 g.gradeComponentId === componentId
           );
+
+          const gradeDTO = {
+            subjectEnrollmentId: parseInt(subjectEnrollmentId),
+            gradePeriodId: parseInt(period),
+            gradeComponentId: componentId,
+            gradeValue: numValue,
+            assignmentDate: new Date().toISOString().split('T')[0]
+          };
 
           if (existingGrade) {
             // Update existing grade
             gradesToSave.push({
               action: 'update',
               id: existingGrade.id,
-              data: {
-                enrollmentId: existingGrade.enrollmentId,
-                subjectId: existingGrade.subjectId,
-                gradePeriod: existingGrade.gradePeriod,
-                gradeMoment: existingGrade.gradeMoment,
-                gradeComponent: existingGrade.gradeComponent,
-                gradeValue: numValue
-              }
+              data: gradeDTO
             });
           } else {
             // Create new grade
             gradesToSave.push({
               action: 'create',
-              data: {
-                enrollmentId: parseInt(enrollmentId),
-                subjectId: parseInt(subjectId),
-                gradePeriod: parseInt(period),
-                gradeMoment: parseInt(moment),
-                gradeComponent: component,
-                gradeValue: numValue
-              }
+              data: gradeDTO
             });
           }
         }
@@ -228,43 +279,19 @@ const Grades = () => {
     }
   };
 
-  const calculateMomentAverage = (enrollmentId: number) => {
-    const momentGrades = grades.filter(
-      g => g.enrollmentId === enrollmentId &&
-           g.subjectId === selectedSubject &&
-           g.gradePeriod === selectedPeriod &&
-           g.gradeMoment === selectedMoment
-    );
-
-    if (momentGrades.length === 0) return '-';
-
-    const sum = momentGrades.reduce((acc, g) => acc + g.gradeValue, 0);
-    const avg = sum / momentGrades.length;
-    return avg.toFixed(2);
-  };
-
-  const calculatePeriodAverage = (enrollmentId: number) => {
+  const calculatePeriodAverage = (subjectEnrollmentId: number) => {
+    if (!subjectEnrollmentId) return '-';
+    
     const periodGrades = grades.filter(
-      g => g.enrollmentId === enrollmentId &&
-           g.subjectId === selectedSubject &&
-           g.gradePeriod === selectedPeriod
+      g => g.subjectEnrollmentId === subjectEnrollmentId &&
+           g.gradePeriodId === selectedPeriod
     );
 
     if (periodGrades.length === 0) return '-';
 
-    // Calculate average per moment, then average of moments
-    const momentAverages: number[] = [];
-    for (const moment of GRADE_MOMENTS) {
-      const momentGrades = periodGrades.filter(g => g.gradeMoment === moment);
-      if (momentGrades.length > 0) {
-        const sum = momentGrades.reduce((acc, g) => acc + g.gradeValue, 0);
-        momentAverages.push(sum / momentGrades.length);
-      }
-    }
-
-    if (momentAverages.length === 0) return '-';
-
-    const avg = momentAverages.reduce((acc, val) => acc + val, 0) / momentAverages.length;
+    // Calculate average of all components for the period
+    const sum = periodGrades.reduce((acc, g) => acc + g.gradeValue, 0);
+    const avg = sum / periodGrades.length;
     return avg.toFixed(2);
   };
 
@@ -280,7 +307,14 @@ const Grades = () => {
     <div className="p-6">
       <Card>
         <CardHeader>
-          <CardTitle>Gestión de Calificaciones - Sistema 3×3×3</CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle>Gestión de Calificaciones - Sistema 3×3×3</CardTitle>
+            {selectedGroup > 0 && (
+              <Badge variant="info">
+                {studentEnrollments.length} estudiante{studentEnrollments.length !== 1 ? 's' : ''} inscrito{studentEnrollments.length !== 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Filters */}
@@ -297,7 +331,10 @@ const Grades = () => {
                 <SelectContent>
                   {groups.map((group) => (
                     <SelectItem key={group.id} value={group.id.toString()}>
-                      {group.groupCode}
+                      {group.courseName && group.levelName 
+                        ? `${group.courseName} - ${group.levelName} - Grupo ${group.groupCode}${group.academicPeriodName ? ` (${group.academicPeriodName})` : ''}`
+                        : `Grupo ${group.groupCode}`
+                      }
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -388,59 +425,84 @@ const Grades = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-48">Estudiante</TableHead>
+                      <TableHead className="text-center">Estado</TableHead>
                       <TableHead className="text-center">Conocimientos</TableHead>
                       <TableHead className="text-center">Desempeño</TableHead>
                       <TableHead className="text-center">Producto</TableHead>
-                      <TableHead className="text-center">Promedio Momento</TableHead>
                       <TableHead className="text-center">Promedio Período</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {isLoading ? (
+                    {isLoading || loadingEnrollments ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-gray-500">
+                        <TableCell colSpan={6} className="text-center text-gray-500 py-8">
                           Cargando datos...
+                        </TableCell>
+                      </TableRow>
+                    ) : !selectedGroup ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                          Seleccione un grupo para ver los estudiantes
+                        </TableCell>
+                      </TableRow>
+                    ) : !selectedSubject ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                          Seleccione una materia para registrar calificaciones
                         </TableCell>
                       </TableRow>
                     ) : filteredEnrollments.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-gray-500">
-                          No se encontraron estudiantes matriculados en este grupo
+                        <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                          No hay estudiantes inscritos en este grupo
+                          {searchTerm && ' que coincidan con la búsqueda'}
                         </TableCell>
                       </TableRow>
                     ) : (
                       filteredEnrollments.map((enrollment) => (
-                        <TableRow key={enrollment.id}>
+                        <TableRow key={enrollment.levelEnrollmentId}>
                           <TableCell className="font-medium">
                             {enrollment.studentName}
                           </TableCell>
-                          {GRADE_COMPONENTS.map((component) => (
-                            <TableCell key={component} className="text-center">
-                              <Input
-                                type="number"
-                                min="0"
-                                max="5"
-                                step="0.1"
-                                value={getInputValue(enrollment.id, component)}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
-                                  handleGradeChange(enrollment.id, component, e.target.value)
-                                }
-                                className="w-20 text-center mx-auto"
-                                placeholder="0.0"
-                                disabled={isSaving}
-                              />
+                          <TableCell className="text-center">
+                            <Badge variant={
+                              enrollment.enrollmentStatus === 'EN_CURSO' ? 'info' :
+                              enrollment.enrollmentStatus === 'APROBADO' ? 'success' :
+                              enrollment.enrollmentStatus === 'REPROBADO' ? 'error' : 'default'
+                            }>
+                              {enrollment.enrollmentStatus}
+                            </Badge>
+                          </TableCell>
+                          {enrollment.subjectEnrollmentId ? (
+                            <>
+                              {GRADE_COMPONENTS.map((component) => (
+                                <TableCell key={component} className="text-center">
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    max="5"
+                                    step="0.1"
+                                    value={getInputValue(enrollment.subjectEnrollmentId!, component)}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
+                                      handleGradeChange(enrollment.subjectEnrollmentId!, component, e.target.value)
+                                    }
+                                    className="w-20 text-center mx-auto"
+                                    placeholder="0.0"
+                                    disabled={isSaving}
+                                  />
+                                </TableCell>
+                              ))}
+                              <TableCell className="text-center">
+                                <Badge variant={getAverageColor(calculatePeriodAverage(enrollment.subjectEnrollmentId!))}>
+                                  {calculatePeriodAverage(enrollment.subjectEnrollmentId!)}
+                                </Badge>
+                              </TableCell>
+                            </>
+                          ) : (
+                            <TableCell colSpan={4} className="text-center text-gray-400 italic">
+                              No inscrito en esta materia
                             </TableCell>
-                          ))}
-                          <TableCell className="text-center">
-                            <Badge variant={getAverageColor(calculateMomentAverage(enrollment.id))}>
-                              {calculateMomentAverage(enrollment.id)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant={getAverageColor(calculatePeriodAverage(enrollment.id))}>
-                              {calculatePeriodAverage(enrollment.id)}
-                            </Badge>
-                          </TableCell>
+                          )}
                         </TableRow>
                       ))
                     )}
