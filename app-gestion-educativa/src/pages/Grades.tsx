@@ -44,6 +44,7 @@ const Grades = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [loadingEnrollments, setLoadingEnrollments] = useState(false);
+  const [loadingSubjects, setLoadingSubjects] = useState(false);
 
   const [selectedGroup, setSelectedGroup] = useState<number>(0);
   const [selectedSubject, setSelectedSubject] = useState<number>(0);
@@ -58,6 +59,43 @@ const Grades = () => {
   useEffect(() => {
     loadInitialData();
   }, []);
+
+  // Load subjects when group changes
+  useEffect(() => {
+    const loadSubjectsForGroup = async () => {
+      if (selectedGroup === 0) {
+        setSubjects([]);
+        setSelectedSubject(0);
+        return;
+      }
+
+      try {
+        setLoadingSubjects(true);
+        const group = groups.find(g => g.id === selectedGroup);
+        
+        if (!group || !group.levelId) {
+          toast.error('No se pudo determinar el nivel del grupo seleccionado');
+          setSubjects([]);
+          return;
+        }
+
+        // Load subjects for the selected group's level
+        const subjectsData = await subjectService.getByLevel(group.levelId);
+        setSubjects(subjectsData);
+        
+        // Reset selected subject when group changes
+        setSelectedSubject(0);
+      } catch (error) {
+        console.error('Error loading subjects for level:', error);
+        toast.error('Error al cargar las materias del nivel');
+        setSubjects([]);
+      } finally {
+        setLoadingSubjects(false);
+      }
+    };
+
+    loadSubjectsForGroup();
+  }, [selectedGroup, groups]);
 
   // Load enrollments and grades when group changes
   useEffect(() => {
@@ -342,13 +380,26 @@ const Grades = () => {
             </div>
 
             <div>
-              <Label>Materia</Label>
+              <Label>
+                Materia
+                {selectedGroup > 0 && subjects.length > 0 && (
+                  <span className="ml-2 text-xs text-gray-500">({subjects.length} disponibles)</span>
+                )}
+              </Label>
               <Select
                 value={selectedSubject.toString()}
                 onValueChange={(value: string) => setSelectedSubject(parseInt(value))}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccione una materia" />
+                <SelectTrigger disabled={selectedGroup === 0 || loadingSubjects}>
+                  <SelectValue placeholder={
+                    selectedGroup === 0 
+                      ? "Seleccione un grupo primero" 
+                      : loadingSubjects 
+                      ? "Cargando materias..." 
+                      : subjects.length === 0
+                      ? "No hay materias para este nivel"
+                      : "Seleccione una materia"
+                  } />
                 </SelectTrigger>
                 <SelectContent>
                   {subjects.map((subject) => (

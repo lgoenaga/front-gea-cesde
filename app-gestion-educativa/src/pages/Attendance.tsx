@@ -11,10 +11,11 @@ import { toast } from 'sonner';
 
 // Import API services
 import { courseGroupService } from '../services/courseService';
-import { subjectService } from '../services/academicService';
+import { subjectService, subjectAssignmentService } from '../services/academicService';
 import { levelEnrollmentService, subjectEnrollmentService } from '../services/enrollmentService';
 import { attendanceService } from '../services/gradeService';
 import { studentService } from '../services/api';
+import classSessionService from '../services/classSessionService';
 
 // Import types
 import type { CourseGroup, Subject, Attendance as AttendanceRecord, AttendanceDTO, Student } from '../types';
@@ -40,6 +41,8 @@ const Attendance = () => {
   // Loading states
   const [isSaving, setIsSaving] = useState(false);
   const [loadingEnrollments, setLoadingEnrollments] = useState(false);
+  const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [loadingSession, setLoadingSession] = useState(false);
 
   // Data states
   const [groups, setGroups] = useState<CourseGroup[]>([]);
@@ -47,6 +50,7 @@ const Attendance = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [studentEnrollments, setStudentEnrollments] = useState<StudentEnrollmentInfo[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [selectedSubjectAssignment, setSelectedSubjectAssignment] = useState<number>(0);
   
   const [selectedGroup, setSelectedGroup] = useState<number>(0);
   const [selectedSubject, setSelectedSubject] = useState<number>(0);
@@ -61,6 +65,84 @@ const Attendance = () => {
   useEffect(() => {
     loadInitialData();
   }, []);
+
+  // Load subjects when group changes
+  useEffect(() => {
+    const loadSubjectsForGroup = async () => {
+      if (selectedGroup === 0) {
+        setSubjects([]);
+        setSelectedSubject(0);
+        return;
+      }
+
+      try {
+        setLoadingSubjects(true);
+        const group = groups.find(g => g.id === selectedGroup);
+        
+        if (!group || !group.levelId) {
+          toast.error('No se pudo determinar el nivel del grupo seleccionado');
+          setSubjects([]);
+          return;
+        }
+
+        // Load subjects for the selected group's level
+        const subjectsData = await subjectService.getByLevel(group.levelId);
+        setSubjects(subjectsData);
+        
+        // Reset selected subject when group changes
+        setSelectedSubject(0);
+      } catch (error) {
+        console.error('Error loading subjects for level:', error);
+        toast.error('Error al cargar las materias del nivel');
+        setSubjects([]);
+      } finally {
+        setLoadingSubjects(false);
+      }
+    };
+
+    loadSubjectsForGroup();
+  }, [selectedGroup, groups]);
+
+  // Load SubjectAssignment when group and subject change
+  useEffect(() => {
+    const loadSubjectAssignment = async () => {
+      if (selectedGroup === 0 || selectedSubject === 0) {
+        setSelectedSubjectAssignment(0);
+        return;
+      }
+
+      try {
+        // Get the selected group to find its academicPeriodId
+        const group = groups.find(g => g.id === selectedGroup);
+        if (!group || !group.academicPeriodId) {
+          console.warn('Group or academicPeriodId not found');
+          setSelectedSubjectAssignment(0);
+          return;
+        }
+
+        // Get assignments for this subject and period
+        const assignments = await subjectAssignmentService.getBySubjectAndPeriod(
+          selectedSubject,
+          group.academicPeriodId
+        );
+
+        // Find the active assignment for this group (filter by group if multiple assignments)
+        const activeAssignment = assignments.find(a => a.isActive);
+        
+        if (activeAssignment) {
+          setSelectedSubjectAssignment(activeAssignment.id);
+        } else {
+          setSelectedSubjectAssignment(0);
+          console.warn('No active subject assignment found for this subject and period');
+        }
+      } catch (error) {
+        console.error('Error loading subject assignment:', error);
+        setSelectedSubjectAssignment(0);
+      }
+    };
+
+    loadSubjectAssignment();
+  }, [selectedGroup, selectedSubject, groups]);
 
   // Load enrollments when group changes
   useEffect(() => {
@@ -90,15 +172,14 @@ const Attendance = () => {
 
   const loadInitialData = async () => {
     try {
-      const [groupsData, subjectsData, studentsData] = await Promise.all([
+      const [groupsData, studentsData] = await Promise.all([
         courseGroupService.getAll(),
-        subjectService.getAll(),
         studentService.getAll()
       ]);
       
       setGroups(groupsData);
-      setSubjects(subjectsData);
       setStudents(studentsData);
+      // Subjects will be loaded when a group is selected
     } catch (error) {
       console.error('Error loading initial data:', error);
       toast.error('Error al cargar los datos iniciales');
@@ -226,8 +307,36 @@ const Attendance = () => {
       return;
     }
 
+    // Validate that we have a subject assignment
+    if (selectedSubjectAssignment === 0) {
+      toast.error('No hay profesor asignado a esta materia para este grupo');
+      return;
+    }
+
     try {
       setIsSaving(true);
+      setLoadingSession(true);
+
+      // Step 1: Get or create ClassSession for this date and assignment
+      let classSessionId: number;
+      try {
+        const session = await classSessionService.findOrCreate({
+          subjectAssignmentId: selectedSubjectAssignment,
+          sessionDate: sessionDate,
+          sessionTime: '08:00:00', // Default time
+          durationMinutes: 120,
+          status: 'REALIZADA'
+        });
+        classSessionId = session.id;
+      } catch (error) {
+        console.error('Error creating/finding class session:', error);
+        toast.error('Error al crear la sesión de clase');
+        return;
+      } finally {
+        setLoadingSession(false);
+      }
+
+      // Step 2: Create/update attendance records with the real classSessionId
       const promises: Promise<AttendanceRecord>[] = [];
 
       studentEnrollments.forEach(enrollment => {
@@ -242,7 +351,7 @@ const Attendance = () => {
           // Update existing record
           const updateData: AttendanceDTO = {
             subjectEnrollmentId: enrollment.subjectEnrollmentId,
-            classSessionId: 1, // TODO: Use actual session ID
+            classSessionId: classSessionId,
             assignmentDate: sessionDate,
             status: status,
             isExcused: status === 'EXCUSADO'
@@ -252,7 +361,7 @@ const Attendance = () => {
           // Create new record
           const createData: AttendanceDTO = {
             subjectEnrollmentId: enrollment.subjectEnrollmentId,
-            classSessionId: 1, // TODO: Use actual session ID
+            classSessionId: classSessionId,
             assignmentDate: sessionDate,
             status: status,
             isExcused: status === 'EXCUSADO'
@@ -335,13 +444,26 @@ const Attendance = () => {
             </div>
 
             <div>
-              <Label>Materia</Label>
+              <Label>
+                Materia
+                {selectedGroup > 0 && subjects.length > 0 && (
+                  <span className="ml-2 text-xs text-gray-500">({subjects.length} disponibles)</span>
+                )}
+              </Label>
               <Select
                 value={selectedSubject.toString()}
                 onValueChange={(value: string) => setSelectedSubject(parseInt(value))}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccione una materia" />
+                <SelectTrigger disabled={selectedGroup === 0 || loadingSubjects}>
+                  <SelectValue placeholder={
+                    selectedGroup === 0 
+                      ? "Seleccione un grupo primero" 
+                      : loadingSubjects 
+                      ? "Cargando materias..." 
+                      : subjects.length === 0
+                      ? "No hay materias para este nivel"
+                      : "Seleccione una materia"
+                  } />
                 </SelectTrigger>
                 <SelectContent>
                   {subjects.map((subject) => (
@@ -377,6 +499,15 @@ const Attendance = () => {
 
           {selectedGroup > 0 && selectedSubject > 0 && (
             <>
+              {/* Assignment Status Warning */}
+              {selectedSubjectAssignment === 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <p className="text-sm text-yellow-800">
+                    ⚠️ No hay profesor asignado a esta materia para este periodo. No se puede registrar asistencia.
+                  </p>
+                </div>
+              )}
+
               {/* Quick Actions */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-gray-700">Marcar todos como:</span>
@@ -386,6 +517,7 @@ const Attendance = () => {
                     variant="outline"
                     size="sm"
                     onClick={() => handleMarkAll(status.value)}
+                    disabled={selectedSubjectAssignment === 0}
                   >
                     {status.label}
                   </Button>
@@ -404,13 +536,16 @@ const Attendance = () => {
                     className="pl-10"
                   />
                 </div>
-                <Button onClick={handleSaveAttendance} disabled={isSaving}>
-                  {isSaving ? (
+                <Button 
+                  onClick={handleSaveAttendance} 
+                  disabled={isSaving || loadingSession || selectedSubjectAssignment === 0}
+                >
+                  {isSaving || loadingSession ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     <Save className="mr-2 h-4 w-4" />
                   )}
-                  {isSaving ? 'Guardando...' : 'Guardar Asistencia'}
+                  {loadingSession ? 'Creando sesión...' : isSaving ? 'Guardando...' : 'Guardar Asistencia'}
                 </Button>
               </div>
 
