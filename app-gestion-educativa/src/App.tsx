@@ -14,7 +14,7 @@ import SubjectAssignments from './pages/SubjectAssignments';
 import AcademicPeriods from './pages/AcademicPeriods';
 import Enrollments from './pages/Enrollments';
 import Grades from './pages/Grades';
-import Attendance from './pages/Attendance';
+import type Attendance from './pages/Attendance';
 import Users from './pages/Users';
 import Roles from './pages/Roles';
 import { ROLES } from './constants';

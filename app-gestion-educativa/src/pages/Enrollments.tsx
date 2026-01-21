@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -14,7 +14,7 @@ import { Badge } from '../components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Combobox } from '../components/ui/combobox';
-import { Plus, Trash2, Search, ChevronRight, ChevronLeft, Check, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Search, ChevronRight, ChevronLeft, Check } from 'lucide-react';
 import { studentService, courseService, levelService, subjectService, courseGroupService, subjectAssignmentService } from '../services/api';
 import { courseEnrollmentService, levelEnrollmentService, subjectEnrollmentService } from '../services/enrollmentService';
 import type { 
@@ -72,9 +72,6 @@ const Enrollments = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [studentSearchOpen, setStudentSearchOpen] = useState(false);
-  const [courseSearchOpen, setCourseSearchOpen] = useState(false);
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState(1);
@@ -99,6 +96,41 @@ const Enrollments = () => {
     }
   }, [selectedCourse]);
 
+  const loadSubjectsByLevel = useCallback(async (levelId: number) => {
+    try {
+      const selectedGroupData = groups.find(g => g.id === selectedGroup);
+      if (!selectedGroupData) {
+        setSubjects([]);
+        setSubjectAssignments([]);
+        return;
+      }
+      
+      // ✅ Paso 1: Obtener catálogo de materias (SIEMPRE necesario v2.5.0)
+      const subjectsData = await subjectService.getByLevel(levelId);
+      
+      if (!subjectsData || subjectsData.length === 0) {
+        // ERROR REAL: No hay materias configuradas
+        setSubjects([]);
+        setSubjectAssignments([]);
+        return;
+      }
+      
+      // ✅ Paso 2: Obtener asignaciones de profesores (OPCIONAL en v2.5.0)
+      const allAssignments = await subjectAssignmentService.getByPeriod(
+        selectedGroupData.academicPeriodId
+      );
+      const levelAssignments = allAssignments.filter(a => a.levelId === levelId);
+      
+      // Guardar ambas listas
+      setSubjects(subjectsData);
+      setSubjectAssignments(levelAssignments);
+      
+    } catch (error) {
+      console.error('Error loading subjects:', error);
+      toast.error('Error al cargar las materias');
+    }
+  }, [groups, selectedGroup]);
+
   // Load subjects when level changes
   useEffect(() => {
     if (selectedLevel > 0 && selectedGroup > 0) {
@@ -107,7 +139,7 @@ const Enrollments = () => {
       setSubjectAssignments([]);
       setSelectedSubjects([]);
     }
-  }, [selectedLevel, selectedGroup]);
+  }, [selectedLevel, selectedGroup, loadSubjectsByLevel]);
 
   // Load groups when course changes
   useEffect(() => {
@@ -182,41 +214,6 @@ const Enrollments = () => {
     }
   };
 
-  const loadSubjectsByLevel = async (levelId: number) => {
-    try {
-      const selectedGroupData = groups.find(g => g.id === selectedGroup);
-      if (!selectedGroupData) {
-        setSubjects([]);
-        setSubjectAssignments([]);
-        return;
-      }
-      
-      // ✅ Paso 1: Obtener catálogo de materias (SIEMPRE necesario v2.5.0)
-      const subjectsData = await subjectService.getByLevel(levelId);
-      
-      if (!subjectsData || subjectsData.length === 0) {
-        // ERROR REAL: No hay materias configuradas
-        setSubjects([]);
-        setSubjectAssignments([]);
-        return;
-      }
-      
-      // ✅ Paso 2: Obtener asignaciones de profesores (OPCIONAL en v2.5.0)
-      const allAssignments = await subjectAssignmentService.getByPeriod(
-        selectedGroupData.academicPeriodId
-      );
-      const levelAssignments = allAssignments.filter(a => a.levelId === levelId);
-      
-      // Guardar ambas listas
-      setSubjects(subjectsData);
-      setSubjectAssignments(levelAssignments);
-      
-    } catch (error) {
-      console.error('Error loading subjects:', error);
-      toast.error('Error al cargar las materias');
-    }
-  };
-
   const loadGroupsByCourse = async (courseId: number) => {
     try {
       const data = await courseGroupService.getByCourse(courseId);
@@ -261,6 +258,11 @@ const Enrollments = () => {
 
       const courseEnrollment = await courseEnrollmentService.create(enrollmentDTO);
       
+      if (!courseEnrollment) {
+        toast.error('Error al crear la matrícula del curso');
+        return;
+      }
+      
       // Step 2: Create LevelEnrollment
       const levelEnrollmentDTO: LevelEnrollmentDTO = {
         courseEnrollmentId: courseEnrollment.id,
@@ -272,6 +274,11 @@ const Enrollments = () => {
       };
       
       const levelEnrollment = await levelEnrollmentService.create(levelEnrollmentDTO);
+      
+      if (!levelEnrollment) {
+        toast.error('Error al crear la matrícula del nivel');
+        return;
+      }
       
       // ✅ Step 3: SubjectEnrollments (MODIFICADO para v2.5.0)
       if (data.subjectIds && data.subjectIds.length > 0) {
@@ -294,7 +301,7 @@ const Enrollments = () => {
         );
         
         // Contar cuántas tienen profesor
-        const withProfessor = enrollmentResults.filter(e => e.professorName).length;
+        const withProfessor = enrollmentResults.filter(e => e && e.professorName).length;
         const withoutProfessor = enrollmentResults.length - withProfessor;
         
         // Mensaje según resultado
@@ -312,11 +319,15 @@ const Enrollments = () => {
       }
       await loadInitialData();
       handleDialogClose();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error creating enrollment:', error);
       
       // Parse backend error messages
-      const errorMessage = error?.response?.data?.message || error?.message || 'Error al crear la matrícula';
+      const errorMessage = (error && typeof error === 'object' && 'response' in error && error.response && typeof error.response === 'object' && 'data' in error.response && error.response.data && typeof error.response.data === 'object' && 'message' in error.response.data) 
+        ? String(error.response.data.message)
+        : (error && typeof error === 'object' && 'message' in error)
+          ? String(error.message)
+          : 'Error al crear la matrícula';
       
       if (errorMessage.includes('not active')) {
         toast.error('El período académico o la matrícula del curso no está activa');
@@ -348,7 +359,6 @@ const Enrollments = () => {
       console.error('Error deleting enrollment:', error);
       toast.error('Error al eliminar la matrícula');
     } finally {
-      setDeleteId(null);
       setIsSaving(false);
     }
   };
@@ -361,8 +371,6 @@ const Enrollments = () => {
     setSelectedLevel(0);
     setSelectedGroup(0);
     setSelectedSubjects([]);
-    setStudentSearchOpen(false);
-    setCourseSearchOpen(false);
     reset();
   };
 
@@ -398,13 +406,10 @@ const Enrollments = () => {
 
   const filteredEnrollments = enrollments.filter(enrollment => {
     const student = students.find(s => s.id === enrollment.studentId);
-    const group = groups.find(g => g.id === enrollment.groupId);
     const studentName = student ? `${student.firstName} ${student.lastName}` : '';
-    const groupName = group ? group.groupCode : '';
     
     const searchLower = searchTerm.toLowerCase();
-    return studentName.toLowerCase().includes(searchLower) ||
-           groupName.toLowerCase().includes(searchLower);
+    return studentName.toLowerCase().includes(searchLower);
   });
 
   const availableLevels = levels.filter(level => level.courseId === selectedCourse);
@@ -412,18 +417,10 @@ const Enrollments = () => {
     group.courseId === selectedCourse && 
     (selectedLevel === 0 || group.levelId === selectedLevel)
   );
-  // Use subjectAssignments instead of subjects to get correct IDs for enrollment
-  const availableSubjects = subjectAssignments.filter(assignment => assignment.levelId === selectedLevel);
 
   const getStudentName = (studentId: number) => {
     const student = students.find(s => s.id === studentId);
     return student ? `${student.firstName} ${student.lastName}` : 'N/A';
-  };
-
-  const getGroupName = (groupId: number) => {
-    const group = groups.find(g => g.id === groupId);
-    if (!group) return 'N/A';
-    return `${group.groupCode} - ${group.levelName || `Nivel ${group.levelId}`} - ${formatScheduleShift(group.scheduleShift)}`;
   };
 
   const formatScheduleShift = (shift?: string) => {
@@ -780,9 +777,6 @@ const Enrollments = () => {
                     
                     // Get subject count
                     const subjectCount = enrollment.subjectEnrollments?.length || 0;
-                    const subjectList = enrollment.subjectEnrollments
-                      ?.map(se => se.subjectName || `Materia ${se.subjectId}`)
-                      .join(', ') || 'Sin materias';
                     
                     return (
                       <TableRow key={enrollment.id}>
@@ -805,7 +799,7 @@ const Enrollments = () => {
                                     {enrollment.subjectEnrollments && enrollment.subjectEnrollments.length > 0 ? (
                                       enrollment.subjectEnrollments.map((se, idx) => (
                                         <div key={idx} className="flex items-start gap-2 p-2 rounded-md bg-slate-50 border border-slate-200">
-                                          <div className="flex-shrink-0 mt-0.5">
+                                          <div className="shrink-0 mt-0.5">
                                             {se.professorName ? (
                                               <Check className="h-4 w-4 text-green-600" />
                                             ) : (
@@ -837,7 +831,7 @@ const Enrollments = () => {
                               </PopoverContent>
                             </Popover>
                             {enrollment.subjectEnrollments?.some(se => !se.professorName) && (
-                              <Badge variant="outline" className="text-amber-600 border-amber-600" title="Algunas materias sin profesor">
+                              <Badge variant="warning" title="Algunas materias sin profesor">
                                 ⚠️ Prof. pendiente
                               </Badge>
                             )}

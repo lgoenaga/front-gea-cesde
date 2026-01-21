@@ -478,3 +478,6 @@ export interface SubjectAssignmentResponse {
   createdAt: string;
   updatedAt: string;
 }
+
+// Type alias for usage in components
+export type SubjectAssignment = SubjectAssignmentResponse;
