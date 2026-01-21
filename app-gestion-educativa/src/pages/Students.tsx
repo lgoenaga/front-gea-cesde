@@ -14,7 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { studentService } from '../services/api';
-import type { Student, StudentDTO, PagedResponse } from '../types';
+import type { Student, StudentDTO } from '../types';
 
 const studentFormSchema = z.object({
   firstName: z.string().min(1, 'El nombre es requerido'),

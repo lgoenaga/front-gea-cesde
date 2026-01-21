@@ -290,7 +290,6 @@ const Grades = () => {
               <Select
                 value={selectedGroup.toString()}
                 onValueChange={(value: string) => setSelectedGroup(parseInt(value))}
-                disabled={isLoading}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccione un grupo" />
@@ -310,7 +309,6 @@ const Grades = () => {
               <Select
                 value={selectedSubject.toString()}
                 onValueChange={(value: string) => setSelectedSubject(parseInt(value))}
-                disabled={isLoading}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccione una materia" />

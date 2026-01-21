@@ -99,10 +99,15 @@ const AcademicPeriods = () => {
       }
 
       setIsSaving(true);
+      
+      // Extract year from startDate
+      const year = new Date(data.startDate).getFullYear();
+      
       const periodDTO: AcademicPeriodDTO = {
         name: data.name,
         startDate: data.startDate,
         endDate: data.endDate,
+        year: year,
         isActive: data.isActive,
       };
 

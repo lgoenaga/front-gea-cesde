@@ -223,8 +223,13 @@ export interface AcademicPeriodDTO {
 export interface Grade {
   id: number;
   subjectEnrollmentId: number;
+  enrollmentId?: number;
+  subjectId?: number;
   gradePeriodId: number;
+  gradePeriod?: number;
   gradeComponentId: number;
+  gradeComponent?: string;
+  gradeMoment?: number;
   gradeValue: number;
   assignmentDate: string;
   comments?: string;
@@ -308,6 +313,7 @@ export interface Role {
   name: string;
   description?: string;
   enabled: boolean;
+  userCount?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -327,6 +333,7 @@ export interface CourseEnrollment {
   courseName?: string;
   academicPeriodId: number;
   academicPeriodName?: string;
+  groupId?: number;
   enrollmentDate: string;
   enrollmentStatus: 'ACTIVO' | 'EGRESADO' | 'RETIRADO' | 'INACTIVO';
   completionDate?: string;

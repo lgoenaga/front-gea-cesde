@@ -107,7 +107,7 @@ const Roles = () => {
   const handleEdit = (role: Role) => {
     setEditingRole(role);
     setValue('name', role.name);
-    setValue('description', role.description);
+    setValue('description', role.description || '');
     setIsDialogOpen(true);
   };
 

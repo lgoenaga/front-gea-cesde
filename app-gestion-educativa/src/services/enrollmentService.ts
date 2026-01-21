@@ -8,7 +8,9 @@ import type {
   CourseEnrollment,
   CourseEnrollmentDTO,
   LevelEnrollment,
-  SubjectEnrollment
+  LevelEnrollmentDTO,
+  SubjectEnrollment,
+  SubjectEnrollmentDTO
 } from '../types';
 
 export const academicPeriodService = {

@@ -17,7 +17,7 @@ import { attendanceService } from '../services/gradeService';
 import { studentService } from '../services/api';
 
 // Import types
-import type { CourseGroup, Subject, CourseEnrollment, Attendance, AttendanceDTO, Student } from '../types';
+import type { CourseGroup, Subject, CourseEnrollment, Attendance as AttendanceRecord, AttendanceDTO, Student } from '../types';
 
 interface EnrollmentWithStudent extends CourseEnrollment {
   studentName?: string;
@@ -42,7 +42,7 @@ const Attendance = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [enrollments, setEnrollments] = useState<EnrollmentWithStudent[]>([]);
-  const [attendanceRecords, setAttendanceRecords] = useState<Attendance[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   
   const [selectedGroup, setSelectedGroup] = useState<number>(0);
   const [selectedSubject, setSelectedSubject] = useState<number>(0);
@@ -121,7 +121,7 @@ const Attendance = () => {
     try {
       const allAttendance = await attendanceService.getAll();
       // Filter by current session parameters
-      const filtered = allAttendance.filter((a: Attendance) => 
+      const filtered = allAttendance.filter((a: AttendanceRecord) => 
         a.assignmentDate === sessionDate &&
         enrollments.some(e => e.id === a.subjectEnrollmentId)
       );
@@ -181,7 +181,7 @@ const Attendance = () => {
 
     try {
       setIsSaving(true);
-      const promises: Promise<Attendance>[] = [];
+      const promises: Promise<AttendanceRecord>[] = [];
 
       filteredEnrollments.forEach(enrollment => {
         const status = getAttendanceStatus(enrollment.id);
@@ -198,7 +198,7 @@ const Attendance = () => {
             status: status,
             isExcused: status === 'EXCUSADO'
           };
-          promises.push(attendanceService.update(existing.id, updateData));
+          promises.push(attendanceService.update(existing.id, updateData) as Promise<AttendanceRecord>);
         } else {
           // Create new record
           const createData: AttendanceDTO = {
@@ -208,7 +208,7 @@ const Attendance = () => {
             status: status,
             isExcused: status === 'EXCUSADO'
           };
-          promises.push(attendanceService.create(createData));
+          promises.push(attendanceService.create(createData) as Promise<AttendanceRecord>);
         }
       });
 
@@ -262,7 +262,6 @@ const Attendance = () => {
               <Select
                 value={selectedGroup.toString()}
                 onValueChange={(value: string) => setSelectedGroup(parseInt(value))}
-                disabled={isLoading}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccione un grupo" />
@@ -282,7 +281,6 @@ const Attendance = () => {
               <Select
                 value={selectedSubject.toString()}
                 onValueChange={(value: string) => setSelectedSubject(parseInt(value))}
-                disabled={isLoading}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccione una materia" />

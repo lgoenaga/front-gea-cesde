@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Users, GraduationCap, BookOpen, TrendingUp, Loader2, Calendar, ClipboardCheck } from 'lucide-react';
+import { Users, GraduationCap, BookOpen, TrendingUp, Loader2, ClipboardCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Import API services
@@ -76,7 +76,7 @@ export default function Dashboard() {
         .sort((a, b) => new Date(b.enrollmentDate).getTime() - new Date(a.enrollmentDate).getTime())
         .slice(0, 3);
       
-      recentEnrollments.forEach((enrollment, index) => {
+      recentEnrollments.forEach((enrollment) => {
         const date = new Date(enrollment.enrollmentDate);
         const now = new Date();
         const diffMs = now.getTime() - date.getTime();

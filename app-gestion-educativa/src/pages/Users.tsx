@@ -400,9 +400,8 @@ const Users = () => {
                           {user.isActive ? 'Activo' : 'Inactivo'}
                         </Badge>
                       </TableCell>
-                      <TableCell>{user.created_at ? new Date(user.created_at).toLocaleDateString('es-ES') : '-'}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
+                      <TableCell>{user.createdAt ? new Date(user.createdAt).toLocaleDateString('es-ES') : '-'}</TableCell>
+                      <TableCell className="text-right">\n                        <div className="flex justify-end gap-2">
                           <Button
                             variant="outline"
                             size="sm"
